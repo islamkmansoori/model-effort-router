@@ -1,6 +1,6 @@
 {
   "name": "model-effort-router",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Choose the Claude model and effort for each subagent and task automatically, from the task and the repository, and prove it with outcomes: explicit critical and risk lines, a cheap optional assessor, retries only for the worker's own failures, an outcome log that suggests better rules, and a public SWE-bench benchmark.",
   "author": {
     "name": "Islam Mansoori"

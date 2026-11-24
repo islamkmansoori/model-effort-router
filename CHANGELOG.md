@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.0
+- `router.py savings`: estimates what model choice saved from Claude Code's own usage records (each reply counted once, cache reads and writes priced, subagents apart from main sessions, totals only). Prices live in the config.
+- Case study: on a real 18-day multi-agent project, mixing models saved about 29% against all-Opus.
+- Community files (contributing, code of conduct, security, issue forms, PR template); crawler files for the Pages site.
+
 ## 0.3.0
 - Benchmark results: 21 SWE-bench Verified tasks on four rungs (84 runs). Starting on Sonnet medium and jumping to Opus high on failure solved 20/21 for 13% less than always Opus high.
 - Default changed from the evidence: a worker retry now jumps to the next model (`"retry_jumps_model": true`).

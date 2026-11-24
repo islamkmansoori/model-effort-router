@@ -37,14 +37,14 @@ import re
 import subprocess
 import sys
 import urllib.request
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 HERE = pathlib.Path(__file__).resolve().parent
 DEFAULT_CONFIG = HERE.parent / "config" / "default.json"
 PROJECT_CONFIG = pathlib.Path(".claude") / "model-router.json"
 MARK = "**Model and effort (model-effort-router):**"
 CAUSES = ("worker", "environment", "task")
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 
 # Settings that make Claude Code run on something other than what the router chose (Claude Code docs, Nov 2026).
 OVERRIDES = {
@@ -562,6 +562,122 @@ def summary(rows: List[Dict[str, str]], cfg: Optional[Dict[str, Any]] = None) ->
     return out
 
 
+# ---- savings: what model choice saved, from Claude Code's own usage records ------------------------------------
+
+def price_of(model: str, prices: Dict[str, Any]) -> Optional[List[float]]:
+    keys = sorted((k for k in prices if not k.startswith("_") and model.startswith(k)), key=len, reverse=True)
+    return prices[keys[0]] if keys else None
+
+
+def usage_cost(u: Dict[str, Any], price: List[float]) -> float:
+    """Dollars for one reply's usage at a [input, output, cache read] price per million tokens."""
+    pin, pout, pread = price
+    cc = u.get("cache_creation") or {}
+    w5 = cc.get("ephemeral_5m_input_tokens")
+    w1 = cc.get("ephemeral_1h_input_tokens")
+    if w5 is None and w1 is None:
+        w5, w1 = u.get("cache_creation_input_tokens") or 0, 0
+    return ((u.get("input_tokens") or 0) * pin + (u.get("output_tokens") or 0) * pout
+            + (u.get("cache_read_input_tokens") or 0) * pread + (w5 or 0) * pin * 1.25 + (w1 or 0) * pin * 2.0) / 1e6
+
+
+def read_usage(folders: List[pathlib.Path], since: str = "", until: str = "", mentions: str = "",
+               exclude: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+    """One record per model reply (Claude Code repeats a reply's usage on every streamed block), from the JSONL
+    transcripts under the folders. `mentions`: keep only sessions whose transcript contains that text."""
+    files = sorted({f for d in folders for f in d.rglob("*.jsonl")})
+    keep_sessions: Optional[Set[str]] = None
+    if mentions:
+        keep_sessions = set()
+        for f in files:
+            try:
+                if mentions in f.read_text(encoding="utf-8", errors="ignore"):
+                    keep_sessions.add(f.stem if f.parent.name != "subagents" else f.parent.parent.name)
+            except OSError:
+                pass
+    seen: Dict[str, Dict[str, Any]] = {}
+    for f in files:
+        session = f.stem if f.parent.name != "subagents" else f.parent.parent.name
+        if (keep_sessions is not None and session not in keep_sessions) or session in (exclude or []):
+            continue
+        try:
+            lines = f.read_text(encoding="utf-8", errors="ignore").splitlines()
+        except OSError:
+            continue
+        for ln in lines:
+            if '"usage"' not in ln:
+                continue
+            try:
+                d = json.loads(ln)
+            except ValueError:
+                continue
+            m = d.get("message") or {}
+            u = m.get("usage")
+            model = m.get("model") or ""
+            day = (d.get("timestamp") or "")[:10]
+            if not u or not model or model.startswith("<") or (since and day < since) or (until and day > until):
+                continue
+            key = m.get("id") or d.get("requestId") or d.get("uuid") or ln[:80]
+            seen[key] = {"model": model, "usage": u, "day": day, "session": session,
+                         "subagent": bool(d.get("isSidechain") or d.get("agentId") or f.parent.name == "subagents")}
+    return list(seen.values())
+
+
+def savings(records: List[Dict[str, Any]], cfg: Dict[str, Any], baseline: Optional[str] = None) -> Dict[str, Any]:
+    """Estimated cost of every reply at its own model, and at the baseline model with the same tokens."""
+    prices = cfg["prices"]
+    base = baseline or cfg.get("savings_baseline", "claude-opus-5-5")
+    bp = price_of(base, prices)
+    if bp is None:
+        raise ValueError(f"no price for the baseline {base}")
+    rows: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    unpriced: Dict[str, int] = {}
+    for r in records:
+        p = price_of(r["model"], prices)
+        if p is None:
+            unpriced[r["model"]] = unpriced.get(r["model"], 0) + 1
+            continue
+        who = "subagents" if r["subagent"] else "main sessions"
+        row = rows.setdefault((who, r["model"]), {"replies": 0, "tokens": 0, "cost": 0.0, "at_baseline": 0.0})
+        u = r["usage"]
+        row["replies"] += 1
+        row["tokens"] += sum(int(u.get(k) or 0) for k in ("input_tokens", "output_tokens", "cache_read_input_tokens",
+                                                            "cache_creation_input_tokens"))
+        row["cost"] += usage_cost(u, p)
+        row["at_baseline"] += usage_cost(u, bp)
+    out: Dict[str, Any] = {"baseline": base, "replies": len(records), "sessions": len({r["session"] for r in records}),
+                           "days": [min((r["day"] for r in records), default=""), max((r["day"] for r in records), default="")],
+                           "rows": [{"who": k[0], "model": k[1], **v} for k, v in sorted(rows.items())], "unpriced": unpriced}
+    for who in ("subagents", "main sessions", "all"):
+        sel = [v for k, v in rows.items() if who == "all" or k[0] == who]
+        cost, at = sum(v["cost"] for v in sel), sum(v["at_baseline"] for v in sel)
+        out[who] = {"replies": sum(v["replies"] for v in sel), "tokens": sum(v["tokens"] for v in sel),
+                    "cost": cost, "at_baseline": at, "saved": at - cost}
+    return out
+
+
+def savings_report(s: Dict[str, Any]) -> List[str]:
+    def pct(a: float, b: float) -> str:
+        return f"{a / b:.0%}" if b else "-"
+    lines = [f"Estimated from Claude Code's own usage records: {s['replies']:,} model replies in {s['sessions']} sessions, "
+             f"{s['days'][0]} to {s['days'][1]}. Prices: Anthropic API list prices per token (a subscription is billed "
+             f"differently; read these as API-equivalent dollars). Baseline: the same tokens on {s['baseline']}.", "",
+             "| Who | Model | Replies | Tokens | Estimated cost | Same tokens on the baseline |", "|---|---|---|---|---|---|"]
+    for r in s["rows"]:
+        lines.append(f"| {r['who']} | {r['model']} | {r['replies']:,} | {r['tokens']:,} | ${r['cost']:,.2f} | ${r['at_baseline']:,.2f} |")
+    lines.append("")
+    for who in ("subagents", "main sessions", "all"):
+        v = s[who]
+        word = "saved" if v["saved"] >= 0 else "cost more"
+        lines.append(f"- **{who.capitalize()}:** ${v['cost']:,.2f} against ${v['at_baseline']:,.2f} on the baseline: "
+                     f"{word} ${abs(v['saved']):,.2f} ({pct(abs(v['saved']), v['at_baseline'])}).")
+    if s["unpriced"]:
+        lines.append(f"- Not priced (add them to `prices`): {s['unpriced']}")
+    lines += ["", "Same tokens on the baseline assumes the baseline model would have used the same number of tokens; "
+              "a stronger model may need fewer turns, a weaker one more. Subagents are where the router chooses."]
+    return lines
+
+
 # ---- command line --------------------------------------------------------------------------------------------
 
 def main(argv: List[str]) -> int:
@@ -592,6 +708,15 @@ def main(argv: List[str]) -> int:
     rc.add_argument("--note", default="")
     rc.add_argument("--repo", type=pathlib.Path)
     sub.add_parser("summary", help="read the log back, with suggested point changes")
+    sv = sub.add_parser("savings", help="estimate what model choice saved, from Claude Code's usage records")
+    sv.add_argument("--projects-dir", type=pathlib.Path, action="append", default=[],
+                    help="transcript folder(s); default: this folder's under ~/.claude/projects")
+    sv.add_argument("--since", default="", help="first day, YYYY-MM-DD")
+    sv.add_argument("--until", default="", help="last day, YYYY-MM-DD")
+    sv.add_argument("--mentions", default="", help="only sessions whose transcript contains this text")
+    sv.add_argument("--baseline", help="model to compare with (default: config savings_baseline)")
+    sv.add_argument("--exclude", action="append", default=[], help="a session id to leave out (repeatable)")
+    sv.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
     cfg = load_config(a.config)
     log = pathlib.Path(cfg["log"])
@@ -611,6 +736,16 @@ def main(argv: List[str]) -> int:
         return 1 if found else 0
     if a.cmd == "summary":
         print("\n".join(summary(read_log(log), cfg)))
+        return 0
+    if a.cmd == "savings":
+        dirs = a.projects_dir or [pathlib.Path.home() / ".claude" / "projects" /
+                                  re.sub(r"[^A-Za-z0-9]", "-", str(pathlib.Path.cwd()))]
+        missing = [d for d in dirs if not d.exists()]
+        if missing:
+            print(f"No transcripts at {missing[0]}; pass --projects-dir (a folder under ~/.claude/projects)")
+            return 1
+        res = savings(read_usage(dirs, a.since, a.until, a.mentions, a.exclude), cfg, a.baseline)
+        print(json.dumps(res, indent=1) if a.json else "\n".join(savings_report(res)))
         return 0
     if a.cmd == "record":
         row = record(load_task(a.task), cfg, log, a.ran, a.first_try, a.retries, a.other, a.findings, a.rework,

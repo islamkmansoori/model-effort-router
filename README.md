@@ -41,6 +41,10 @@ Without the plugin, copy `scripts/router.py` and `config/default.json` (as `scri
 
 Caveats: one run per task and rung (models vary run to run), bug fixes in two Python libraries, costs are Claude Code's own estimates, and "failure" here is the hidden tests failing; in real work your worker's own tests and review have to catch it.
 
+## On a real project
+
+On a private 18-day multi-agent build (43 sessions, 19,226 model replies), mixing models saved an estimated **29%** against running everything on Opus 5.5: about $1,586 instead of $2,242 in API-equivalent dollars. That measures model choice in general, most of it made by hand before the router existed; it is the prize the router automates. Details and method: [docs/case-study.md](docs/case-study.md). Measure your own with `router.py savings`.
+
 ## Benchmark results
 
 <!-- results:start -->
@@ -112,6 +116,7 @@ python3 scripts/router.py score TASK.md --write --retry 1 --cause worker
 python3 scripts/router.py check-env                            # anything that would override the choice?
 python3 scripts/router.py record TASK.md --ran sonnet/high --first-try pass --findings 0
 python3 scripts/router.py summary                              # outcomes, with suggested point changes
+python3 scripts/router.py savings --since 2026-11-01            # what model choice saved, from Claude Code's usage records
 python3 scripts/router.py init                                 # .claude/model-router.json to edit
 ```
 

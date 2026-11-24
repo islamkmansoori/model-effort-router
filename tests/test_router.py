@@ -258,6 +258,37 @@ def main() -> int:
     check([router.climb(k, lad, False) for k in range(4)] == [1, 2, 3, 3], "without the jump, one rung at a time")
     check(router.score_text(task("S", 1), CFG, retry=1, cause="worker")["model"] == "opus", "a jumping retry goes from sonnet to opus")
 
+    print("== savings")
+    proj = pathlib.Path(tempfile.mkdtemp(prefix="savings-"))
+    (proj / "s1" / "subagents").mkdir(parents=True)
+
+    def line(mid: str, model: str, u: Dict[str, Any], side: bool = False, day: str = "2026-11-20") -> str:
+        return json.dumps({"timestamp": day + "T10:00:00Z", "isSidechain": side,
+                           "message": {"id": mid, "model": model, "usage": u}}) + "\n"
+
+    u1 = {"input_tokens": 1000, "output_tokens": 1000, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}
+    u2 = {"input_tokens": 0, "output_tokens": 0, "cache_read_input_tokens": 1000000,
+          "cache_creation": {"ephemeral_5m_input_tokens": 1000000, "ephemeral_1h_input_tokens": 0}}
+    (proj / "s1.jsonl").write_text(line("m1", "claude-opus-5-5", u1) * 3 + line("m2", "claude-sonnet-5-5", u2)
+                                   + line("m9", "claude-sonnet-5-5", u1, day="2026-10-01") + "not json\n", encoding="utf-8")
+    (proj / "s1" / "subagents" / "agent-x.jsonl").write_text(line("m3", "claude-sonnet-5-5", u1, side=True)
+                                                              + line("m4", "<synthetic>", u1), encoding="utf-8")
+    (proj / "s2.jsonl").write_text(line("m5", "claude-unknown-9", u1) + "talks about widgets\n", encoding="utf-8")
+    recs = router.read_usage([proj], since="2026-11-01")
+    check(len(recs) == 4 and sum(r["subagent"] for r in recs) == 1,
+          "a reply repeated on several lines counts once; older days, synthetic replies and bad lines are skipped", recs)
+    check(abs(router.usage_cost(u1, [4.0, 20.0, 0.2]) - 0.024) < 1e-9, "input and output are priced per million tokens")
+    check(abs(router.usage_cost(u2, [2.0, 10.0, 0.1]) - (0.1 + 2.5)) < 1e-9, "cache reads at their price, 5-minute writes at 1.25x input")
+    check(router.price_of("claude-haiku-4-5-20251001", CFG["prices"]) == [1.0, 5.0, 0.1], "a dated model id matches its family's price")
+    sv = router.savings(recs, CFG)
+    check(sv["unpriced"] == {"claude-unknown-9": 1} and abs(sv["subagents"]["saved"] - (0.024 - 0.012)) < 1e-9
+          and abs(sv["main sessions"]["at_baseline"] - (0.024 + 0.2 + 5.0)) < 1e-9,
+          "savings: the same tokens priced on the baseline; unknown models are listed, not guessed", sv)
+    check([r["model"] for r in router.read_usage([proj], mentions="widgets")] == ["claude-unknown-9"] and len(router.read_usage([proj], exclude=["s1"])) == 1,
+          "sessions can be kept by what they mention, or left out by id")
+    rep = "\n".join(router.savings_report(sv))
+    check("Subagents:** $0.01 against $0.02" in rep and "claude-unknown-9" in rep, "the report states both totals", rep)
+
     print(f"\n{failures} failed")
     return 1 if failures else 0
 

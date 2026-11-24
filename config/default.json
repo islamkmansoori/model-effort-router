@@ -198,5 +198,44 @@
     "timeout": 180,
     "max_chars": 12000,
     "critical_meaning": "the part of the system where a mistake costs most (for example payments, authentication or the data model)"
-  }
+  },
+  "prices": {
+    "_about": "US dollars per million tokens: [input, output, cache read]. Cache writes are priced at 1.25x input (5-minute) and 2x input (1-hour). Anthropic API list prices, November 2026; update them here. A model id matches the longest key it starts with.",
+    "claude-fable-5-2": [
+      8.0,
+      40.0,
+      0.2
+    ],
+    "claude-opus-5-5": [
+      4.0,
+      20.0,
+      0.2
+    ],
+    "claude-opus-5": [
+      5.0,
+      25.0,
+      0.5
+    ],
+    "claude-sonnet-5-5": [
+      2.0,
+      10.0,
+      0.1
+    ],
+    "claude-sonnet-5": [
+      2.0,
+      10.0,
+      0.2
+    ],
+    "claude-haiku-5-5": [
+      0.1,
+      0.5,
+      0.01
+    ],
+    "claude-haiku-4-5": [
+      1.0,
+      5.0,
+      0.1
+    ]
+  },
+  "savings_baseline": "claude-opus-5-5"
 }
