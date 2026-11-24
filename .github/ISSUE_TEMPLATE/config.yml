@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: How it decides, FAQ
+    url: https://github.com/islamkmansoori/model-effort-router#faq
+    about: Read the FAQ first; many questions about models and effort are answered there.

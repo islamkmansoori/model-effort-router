@@ -4,6 +4,8 @@
 
 A [Claude Code](https://code.claude.com) plugin. Before a subagent or worker starts, it reads the task (a story, a GitHub issue or a plain prompt), the labels people put on it and the repository it touches, and chooses **Sonnet or Opus** and an **effort level** (medium, high, xhigh). A public [SWE-bench Verified](https://www.swebench.com/) benchmark in this repository shows what that choice costs and solves compared with simpler rules.
 
+In other words: an explainable **LLM router** (model routing) for Claude Code subagents and agent teams, to cut **token cost** without losing solved tasks, and a measured answer to **Sonnet vs Opus** and **which effort level** to use.
+
 [![test](https://github.com/islamkmansoori/model-effort-router/actions/workflows/test.yml/badge.svg)](https://github.com/islamkmansoori/model-effort-router/actions/workflows/test.yml)
 ![python](https://img.shields.io/badge/python-3.9%2B-blue)
 ![license](https://img.shields.io/badge/license-MIT-green)

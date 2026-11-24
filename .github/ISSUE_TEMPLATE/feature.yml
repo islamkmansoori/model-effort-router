@@ -1,0 +1,10 @@
+name: Idea
+description: A new signal, input, rule or benchmark feature
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: The idea, and the evidence or use case behind it
+    validations:
+      required: true

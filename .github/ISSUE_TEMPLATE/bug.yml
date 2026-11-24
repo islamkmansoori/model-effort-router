@@ -1,0 +1,21 @@
+name: Bug report
+description: The router, hook or benchmark did something wrong
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Command or task that shows it
+      description: The router command, or the task text (remove anything private), and its output.
+      render: shell
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: "`python3 scripts/router.py --version`, `claude --version`, operating system, Python version"

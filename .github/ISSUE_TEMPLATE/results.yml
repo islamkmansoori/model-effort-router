@@ -1,0 +1,20 @@
+name: Share results
+description: Your outcome log summary or benchmark rerun - the evidence that improves the rules
+labels: [results]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: "`router.py summary` output or benchmark report"
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: What kind of tasks?
+      description: Languages, size of the codebase, kind of work (bug fixes, features, refactors). Nothing private.
+  - type: textarea
+    id: learned
+    attributes:
+      label: What would you change in the rules?
