@@ -1,0 +1,11 @@
+{
+  "name": "model-effort-router",
+  "owner": {"name": "Islam Mansoori"},
+  "plugins": [
+    {
+      "name": "model-effort-router",
+      "source": "./",
+      "description": "Choose the Claude model and effort for each task from the task file, and learn from outcomes."
+    }
+  ]
+}

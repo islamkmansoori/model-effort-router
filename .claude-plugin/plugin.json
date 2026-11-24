@@ -1,0 +1,8 @@
+{
+  "name": "model-effort-router",
+  "version": "0.1.0",
+  "description": "Score a task file and choose the Claude model and effort a worker runs it on: explicit critical and risk lines, points for size and signals, retries only for the worker's own failures, and an outcome log to tune the rules.",
+  "author": {"name": "Islam Mansoori"},
+  "license": "MIT",
+  "keywords": ["model selection", "effort", "subagents", "cost", "routing"]
+}

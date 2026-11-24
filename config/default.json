@@ -1,0 +1,50 @@
+{
+  "_about": "Rules for model-effort-router. Copy with `router.py init` to .claude/model-router.json and edit. Patterns are Python regular expressions, matched case-insensitively. A sentence that denies a pattern (see negation) does not count.",
+
+  "ladder": [["sonnet", "medium"], ["sonnet", "high"], ["opus", "high"], ["opus", "xhigh"]],
+  "thresholds": [[9, 2], [6, 1], [0, 0]],
+
+  "size": {
+    "pattern": "(?:\\*\\*)?size(?:\\*\\*)?:?(?:\\*\\*)?\\s*(XS|S|M|L|XL)\\b",
+    "points": {"XS": 0, "S": 1, "M": 2, "L": 4, "XL": 6},
+    "default": 2
+  },
+  "criteria": {
+    "start": "acceptance criteria",
+    "end": "^(#{1,6} |\\*\\*[A-Z][^*]*\\*\\*)",
+    "item": "^\\s*(\\d+[.)]|[-*] \\[[ xX]\\]|[-*])\\s",
+    "bands": [[10, 2], [7, 1]]
+  },
+  "depends": {
+    "line": "^.*depends on.*$",
+    "item": "#\\d+|\\b[A-Z][A-Z0-9]+-\\d+(?:\\.\\d+)?\\b",
+    "over": 4,
+    "points": 1
+  },
+  "signals": [
+    {"name": "database schema", "points": 1, "pattern": "\\b(migration|schema|new table|alter table|create table)\\b"},
+    {"name": "permissions or personal data", "points": 1, "pattern": "\\b(permission|authori[sz]ation|roles?|personal data|PII|secrets?)\\b"},
+    {"name": "user interface", "points": 1, "pattern": "\\b(UI|screen|page|frontend|component)\\b"},
+    {"name": "open question", "points": 1, "pattern": "(open question|\\bTBD\\b|to be decided|owner decides)"},
+    {"name": "shared or build files", "points": 1, "pattern": "\\b(Makefile|package\\.json|pyproject\\.toml|Dockerfile|CI pipeline|shared module)\\b"},
+    {"name": "concurrency or performance", "points": 1, "pattern": "\\b(concurren\\w+|race condition|locking|performance|latency)\\b"}
+  ],
+
+  "critical": {
+    "line": "Critical",
+    "guess": "\\b(critical path|ledger|billing engine|authentication flow|cryptograph\\w*|golden (?:test|file)s?)\\b"
+  },
+  "risk": {
+    "line": "Risk",
+    "floor": 2,
+    "kinds": {
+      "money": {"meaning": "changes a calculation, a price, a limit or a payment", "pattern": "\\b(pricing|price|interest|fee|payment|invoice|limit|calculation)\\b"},
+      "security": {"meaning": "changes authentication, permissions or personal-data handling", "pattern": "\\b(authentication|permission|access control|personal data|PII|encryption)\\b"},
+      "data": {"meaning": "changes or migrates data already stored", "pattern": "\\b(migrat\\w+|backfill\\w*|existing records|stored data)\\b"}
+    }
+  },
+
+  "negation": "\\b(no|not|never|without|unchanged|nothing|untouched)\\b|n't\\b",
+  "skip_lines": null,
+  "log": "docs/model-router-log.md"
+}
