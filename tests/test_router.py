@@ -7,9 +7,11 @@ import json
 import pathlib
 import sys
 import tempfile
+from typing import Any, Dict
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
+import route_agent  # noqa: E402
 import router  # noqa: E402
 
 CFG = router.load_config(pathlib.Path("/nonexistent"))
@@ -102,9 +104,9 @@ def main() -> int:
     b.write_text(task("L", 10, head="**Risk:** none\n"), encoding="utf-8")
     router.write_choice(a, router.score_text(a.read_text(encoding="utf-8"), CFG))
     router.write_choice(b, router.score_text(b.read_text(encoding="utf-8"), CFG))
-    router.record(a, CFG, log, "sonnet/medium", "fail", 1, "environment 1", 2, 0, "", "2026-01-01")
-    router.record(b, CFG, log, "sonnet/medium", "pass", today="2026-01-01")
-    router.record(a, CFG, log, "sonnet/medium", "fail", 1, "environment 1", 2, 1, "rework", "2026-01-02")
+    router.record(router.load_task(str(a)), CFG, log, "sonnet/medium", "fail", 1, "environment 1", 2, 0, "", "2026-01-01")
+    router.record(router.load_task(str(b)), CFG, log, "sonnet/medium", "pass", today="2026-01-01")
+    router.record(router.load_task(str(a)), CFG, log, "sonnet/medium", "fail", 1, "environment 1", 2, 1, "rework", "2026-01-02")
     rows = router.read_log(log)
     check(len(rows) == 2 and rows[-1]["Task"] == "a.md" and rows[-1]["Rework"] == "1", "one row per task; recording again replaces it", rows)
     check(rows[0]["Chosen"] == "sonnet/high" and rows[0]["Risk"] == "none" and rows[1]["Risk"] == "not set", "chosen is read from the task's line", rows)
@@ -120,6 +122,93 @@ def main() -> int:
     ex = ROOT / "examples" / "add-discount-codes.md"
     r = router.score_text(ex.read_text(encoding="utf-8"), CFG)
     check((r["model"], r["effort"]) == ("opus", "high") and r["risk"] == ["money"], "the example task: risk money, opus high", r)
+
+    print("== inputs: issues, labels, plain text")
+    payload = {"title": "Checkout total wrong", "body": "The total ignores the fee.\n\n**Acceptance criteria**\n1. a\n2. b",
+               "labels": [{"name": "size: L"}, {"name": "security"}]}
+
+    class Resp(io.BytesIO):
+        def __enter__(self) -> Resp:
+            return self
+
+        def __exit__(self, *a: object) -> None:
+            return None
+
+    seen = {}
+
+    def opener(req: object, timeout: int = 0) -> Resp:
+        seen["url"] = getattr(req, "full_url", "")
+        return Resp(json.dumps(payload).encode())
+
+    it = router.fetch_issue("https://github.com/acme/shop/issues/42", opener)
+    check(seen["url"] == "https://api.github.com/repos/acme/shop/issues/42" and it.name == "acme/shop#42"
+          and it.text.startswith("# Checkout total wrong"), "an issue URL is read from the GitHub API", seen)
+    r = router.score_task(it, CFG)
+    check("size L (+4)" in r["reasons"] and r["risk"] == ["security"] and r["risk_source"] == "labels or paths"
+          and (r["model"], r["effort"]) == ("opus", "high"), "labels give the size and a risk that acts", r)
+    r = router.score_task(router.Task("Fix it", "t", ["Critical"]), CFG)
+    check(r["critical"] and r["critical_source"] == "label" and r["effort"] == "xhigh", "a critical label is the top rung", r)
+    try:
+        router.fetch_issue("not an issue")
+        bad = False
+    except ValueError:
+        bad = True
+    check(bad, "a reference that is not an issue is refused")
+    check(router.score_text("Fix the bug. **Risk:** money. Then stop.", CFG)["risk"] == ["money"],
+          "a **Risk:** marker inside a sentence is read")
+    with contextlib.redirect_stdout(io.StringIO()) as out:
+        router.main(["score", "--text", "Rename a variable", "--json"])
+    check(json.loads(out.getvalue())["model"] == "sonnet", "--text scores a plain prompt")
+
+    print("== the repository")
+    files = ["src/billing/invoice.py", "src/ui/page.tsx", "src/util.py", "tests/test_util.py", "README.md",
+             "a/index.ts", "b/index.ts", "c/index.ts", "d/index.ts"]
+    f1 = router.repo_facts(pathlib.Path("."), "Change src/billing/invoice.py, util.py, README.md and index.ts", CFG,
+                           files=files, churn={"src/util.py": 12})
+    check(f1["touched"] == ["README.md", "src/billing/invoice.py", "src/util.py"],
+          "named files are found; a name in many folders (index.ts) is ignored", f1)
+    check(f1["untested"] == ["src/billing/invoice.py"] and f1["churned"] == ["src/util.py"],
+          "untested code files and often-changed files are found; README is not code", f1)
+    cfg_p = dict(CFG, risk=dict(CFG["risk"], paths={"money": ["src/billing/*"]}),
+                 critical=dict(CFG["critical"], paths=["src/ui/*"]))
+    r = router.score_text("Change src/billing/invoice.py", cfg_p, facts=router.repo_facts(pathlib.Path("."), "src/billing/invoice.py", cfg_p, files=files, churn={}))
+    check(r["risk"] == ["money"] and r["model"] == "opus" and "1 touched file(s) without tests (+1)" in r["reasons"],
+          "a configured risk path acts, and untested files add a point", r)
+    r = router.score_text("Edit page.tsx", cfg_p, facts=router.repo_facts(pathlib.Path("."), "page.tsx", cfg_p, files=files, churn={}))
+    check(r["critical"] and r["critical_source"] == "paths", "a configured critical path is the top rung", r)
+    many = [f"m/f{i}.py" for i in range(12)]
+    r = router.score_text("x", CFG, facts={"touched": many, "untested": [], "churned": []})
+    check("touches 12 files (+2)" in r["reasons"], "many touched files add points", r)
+    check(router.repo_facts(pathlib.Path("/nonexistent"), "a.py", CFG)["touched"] == [], "not a repository: no facts, no error")
+
+    print("== suggestions")
+    def row(sig: str, first: str, ran: str = "sonnet/medium") -> Dict[str, str]:
+        return {"Signals": sig, "First try": first, "Worker retries": "0", "Review findings": "0", "Rework": "0",
+                "Ran": ran, "Chosen": ran, "Task": "t", "Other failures": "none"}
+    rows = [row("user interface", "fail")] * 3 + [row("database schema", "pass")] * 5 + [row("-", "fail")] * 2
+    sug = router.suggestions(rows, CFG)
+    check(any(s.startswith("raise 'user interface' (now 1)") for s in sug), "a signal that fails often: raise it", sug)
+    check(any(s.startswith("lower 'database schema'") for s in sug), "a signal that never fails: lower it", sug)
+    check(any("sonnet/medium had trouble" in s for s in sug), "a rung that fails half the time: send more up", sug)
+    check(router.suggestions(rows[:4], CFG) == [], "fewer than 5 tasks: no suggestion")
+    s = "\n".join(router.summary(rows, CFG))
+    check("Suggested changes" in s, "summary lists the suggestions", s)
+
+    print("== the hook")
+    ev: Dict[str, Any] = {"tool_name": "Agent", "session_id": "s", "tool_input": {"subagent_type": "general-purpose", "description": "d",
+          "prompt": "Small fix. **Risk:** money"}}
+    ans = route_agent.decide(ev, CFG, pathlib.Path("/nonexistent"), env={})
+    ui = (ans or {}).get("hookSpecificOutput", {}).get("updatedInput", {})
+    check(ui.get("model") == "opus" and ui.get("effort") == "high" and ui.get("prompt") == ev["tool_input"]["prompt"]
+          and ui.get("subagent_type") == "general-purpose", "the hook sets model and effort and keeps the other fields", ans)
+    check("permissionDecision" not in (ans or {}).get("hookSpecificOutput", {}), "by default the hook makes no permission decision")
+    kept = route_agent.decide({**ev, "tool_input": {**ev["tool_input"], "model": "haiku"}}, CFG, pathlib.Path("."), env={})
+    check(kept is not None and "hookSpecificOutput" not in kept and kept["_log"]["action"] == "kept (explicit)", "an explicit model is respected")
+    sk = route_agent.decide({**ev, "tool_input": {**ev["tool_input"], "subagent_type": "Explore"}}, CFG, pathlib.Path("."), env={})
+    check(sk is not None and sk["_log"]["action"].startswith("skipped"), "a skipped agent type is left alone")
+    check(route_agent.decide({**ev, "tool_name": "Bash"}, CFG, pathlib.Path("."), env={}) is None, "other tools are not touched")
+    ov = route_agent.decide(ev, CFG, pathlib.Path("/nonexistent"), env={"CLAUDE_CODE_EFFORT_LEVEL": "low"})
+    check(bool(ov and ov["_log"]["overridden_by"]), "the log says when a setting overrides the choice", ov)
 
     print(f"\n{failures} failed")
     return 1 if failures else 0

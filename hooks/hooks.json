@@ -1,0 +1,17 @@
+{
+  "description": "Route each subagent to a Claude model and effort chosen from its task (model-effort-router).",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/route_agent.py\" 2>/dev/null || python \"${CLAUDE_PLUGIN_ROOT}/scripts/route_agent.py\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}
