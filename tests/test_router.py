@@ -63,8 +63,12 @@ def main() -> int:
 
     print("== retries")
     t = task("S", 1)
-    check([pick(t, retry=n, cause="worker") for n in range(5)]
-          == [("sonnet", "medium"), ("sonnet", "high"), ("opus", "high"), ("opus", "xhigh"), ("opus", "xhigh")], "worker retries climb and stop at the top")
+    check([pick(t, retry=n, cause="worker") for n in range(4)]
+          == [("sonnet", "medium"), ("opus", "high"), ("opus", "xhigh"), ("opus", "xhigh")],
+          "by default a worker retry jumps to the next model, then climbs, and stops at the top")
+    one = dict(CFG, retry_jumps_model=False)
+    check([router.score_text(t, one, retry=n, cause="worker")["effort"] for n in range(3)] == ["medium", "high", "high"]
+          and router.score_text(t, one, retry=1, cause="worker")["model"] == "sonnet", "with the jump off, one rung at a time")
     check(pick(t, retry=2, cause="environment") == ("sonnet", "medium") and pick(t, retry=2, cause="task") == ("sonnet", "medium"),
           "environment or task failures move nothing")
     tmp = pathlib.Path(tempfile.mkdtemp())
@@ -252,8 +256,7 @@ def main() -> int:
     lad = CFG["ladder"]
     check([router.climb(k, lad, True) for k in range(4)] == [2, 2, 3, 3], "jumping skips more effort on the same model")
     check([router.climb(k, lad, False) for k in range(4)] == [1, 2, 3, 3], "without the jump, one rung at a time")
-    cj = dict(CFG, retry_jumps_model=True)
-    check(router.score_text(task("S", 1), cj, retry=1, cause="worker")["model"] == "opus", "a jumping retry goes from sonnet to opus")
+    check(router.score_text(task("S", 1), CFG, retry=1, cause="worker")["model"] == "opus", "a jumping retry goes from sonnet to opus")
 
     print(f"\n{failures} failed")
     return 1 if failures else 0

@@ -6,8 +6,11 @@
   "pytest-dev__pytest-10356",
   "pytest-dev__pytest-5787",
   "pytest-dev__pytest-5840",
+  "pytest-dev__pytest-6202",
+  "pytest-dev__pytest-7236",
   "pytest-dev__pytest-7432",
-  "pytest-dev__pytest-7982"
+  "pytest-dev__pytest-7571",
+  "pytest-dev__pytest-8399"
  ],
  "test_ids": [
   "pylint-dev__pylint-4970",
@@ -16,67 +19,70 @@
   "pytest-dev__pytest-5631",
   "pytest-dev__pytest-5809",
   "pytest-dev__pytest-6197",
-  "pytest-dev__pytest-7571"
+  "pytest-dev__pytest-7205",
+  "pytest-dev__pytest-7324",
+  "pytest-dev__pytest-7490",
+  "pytest-dev__pytest-7982"
  ],
- "candidates": 20,
+ "candidates": 24,
  "chosen": {
   "source": "assessor",
   "thresholds": [
    [
-    1,
+    2,
     2
    ],
    [
     0,
-    1
+    0
    ]
   ],
-  "retry_jumps_model": false
+  "retry_jumps_model": true
  },
  "tuned_on_tune_half": {
-  "solved": 7,
-  "cost": 2.23007664
+  "solved": 10,
+  "cost": 2.44549973
  },
  "tuned_on_test_half": {
-  "solved": 7,
-  "cost": 1.14732096
+  "solved": 10,
+  "cost": 1.3846355300000002
  },
  "test_half_baselines": {
   "Always sonnet medium": {
-   "solved": 5,
-   "cost": 0.4759104
+   "solved": 8,
+   "cost": 0.6792832
   },
   "Always sonnet high": {
-   "solved": 5,
-   "cost": 0.5440419
+   "solved": 8,
+   "cost": 0.7521841
   },
   "Always opus high": {
-   "solved": 7,
-   "cost": 1.3304129
+   "solved": 10,
+   "cost": 1.8738432
   },
   "Always opus xhigh": {
-   "solved": 7,
-   "cost": 1.7146292
+   "solved": 10,
+   "cost": 2.3634585
   },
   "Start at the bottom, climb on failure": {
-   "solved": 7,
-   "cost": 1.1471575
+   "solved": 10,
+   "cost": 1.3505303000000002
   },
   "Start at the bottom, jump to the next model on failure": {
-   "solved": 7,
-   "cost": 0.9917928
+   "solved": 10,
+   "cost": 1.1951656000000002
   },
   "Router (default rules)": {
-   "solved": 5,
-   "cost": 0.4759104
+   "solved": 8,
+   "cost": 0.8376438
   },
   "Router (default rules), climb on failure": {
-   "solved": 7,
-   "cost": 1.1471575
+   "solved": 10,
+   "cost": 1.5088909000000001
   },
   "Cheapest rung that worked (hindsight)": {
-   "solved": 7,
-   "cost": 0.8673270000000001
+   "solved": 10,
+   "cost": 1.0706998
   }
  }
 }

@@ -1,6 +1,9 @@
 # Changelog
 
 ## 0.3.0
+- Benchmark results: 21 SWE-bench Verified tasks on four rungs (84 runs). Starting on Sonnet medium and jumping to Opus high on failure solved 20/21 for 13% less than always Opus high.
+- Default changed from the evidence: a worker retry now jumps to the next model (`"retry_jumps_model": true`).
+- `bench/run.py tune`: tune on one half of the tasks, report on the other.
 - Optional assessor: one cheap model call (Haiku, low effort, read-only, under a cent per task in our runs) estimates the size and the files likely to change when the task text does not say. Its risk and critical estimates are only named.
 - Public benchmark (`bench/`): SWE-bench Verified tasks run on every rung; the report compares fixed choices, climbing from the bottom, the router (rules only and with the assessor) and the cheapest rung that worked.
 - Plugin icon; marketplace description; CI on Linux, macOS and Windows; `llms.txt`; `AGENTS.md`.

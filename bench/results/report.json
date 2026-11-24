@@ -12,54 +12,60 @@
   "pytest-dev__pytest-5809",
   "pytest-dev__pytest-5840",
   "pytest-dev__pytest-6197",
+  "pytest-dev__pytest-6202",
+  "pytest-dev__pytest-7205",
+  "pytest-dev__pytest-7236",
+  "pytest-dev__pytest-7324",
   "pytest-dev__pytest-7432",
+  "pytest-dev__pytest-7490",
   "pytest-dev__pytest-7571",
-  "pytest-dev__pytest-7982"
+  "pytest-dev__pytest-7982",
+  "pytest-dev__pytest-8399"
  ],
  "strategies": {
   "Always sonnet medium": {
-   "solved": 8,
-   "cost": 1.2238399
+   "solved": 14,
+   "cost": 1.6214045
   },
   "Always sonnet high": {
-   "solved": 9,
-   "cost": 1.3238241
+   "solved": 15,
+   "cost": 1.7787506
   },
   "Always opus high": {
-   "solved": 14,
-   "cost": 3.4343409
+   "solved": 20,
+   "cost": 4.6221913
   },
   "Always opus xhigh": {
-   "solved": 14,
-   "cost": 4.2173452000000005
+   "solved": 20,
+   "cost": 5.503406
   },
   "Start at the bottom, climb on failure": {
-   "solved": 14,
-   "cost": 3.9852766
+   "solved": 20,
+   "cost": 4.3828412000000005
   },
   "Start at the bottom, jump to the next model on failure": {
-   "solved": 14,
-   "cost": 3.6131483
+   "solved": 20,
+   "cost": 4.0107129
   },
   "Router (rules only)": {
-   "solved": 8,
-   "cost": 1.2238399
+   "solved": 14,
+   "cost": 1.7797651
   },
   "Router (rules only), climb on failure": {
-   "solved": 14,
-   "cost": 3.9852766
+   "solved": 20,
+   "cost": 4.5412018000000005
   },
   "Router (with assessor)": {
-   "solved": 8,
-   "cost": 1.2736517
+   "solved": 14,
+   "cost": 1.8492645600000002
   },
   "Router (with assessor), climb on failure": {
-   "solved": 14,
-   "cost": 4.0350884
+   "solved": 20,
+   "cost": 4.610701260000001
   },
   "Cheapest rung that worked (hindsight)": {
-   "solved": 14,
-   "cost": 2.2978089
+   "solved": 20,
+   "cost": 2.6953735
   }
  }
 }

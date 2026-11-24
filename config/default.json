@@ -32,7 +32,7 @@
       0
     ]
   ],
-  "retry_jumps_model": false,
+  "retry_jumps_model": true,
   "size": {
     "pattern": "(?:\\*\\*)?size(?:\\*\\*)?:?(?:\\*\\*)?\\s*(XS|S|M|L|XL)\\b",
     "points": {

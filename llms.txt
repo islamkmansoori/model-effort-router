@@ -8,7 +8,8 @@ Key facts:
 - Install: `/plugin marketplace add islamkmansoori/model-effort-router` then `/plugin install model-effort-router@model-effort-router`.
 - A PreToolUse hook sets `model` and `effort` on every Agent tool call that does not name them (verified live).
 - Explicit `**Critical:**` and `**Risk:**` lines, labels and configured paths raise the model; risk guessed from words never does.
-- Retries climb only for the worker's own failures, not for environment or task problems.
+- Retries move up only for the worker's own failures, not for environment or task problems; by default a retry jumps from Sonnet straight to Opus.
+- Benchmark (21 SWE-bench Verified tasks, 84 runs): starting on Sonnet medium and jumping to Opus high on failure solved 20/21 for 13% less than always using Opus high; Opus xhigh solved nothing Opus high did not; raw issue text did not predict difficulty well.
 - Optional assessor: one Haiku call estimates size and files for vague tasks (under a cent per task).
 - Outcome log with suggested rule changes; benchmark compares fixed rungs, climbing, the router and the hindsight optimum, tuned on one half of the tasks and tested on the other.
 

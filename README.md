@@ -28,43 +28,54 @@ That's it: subagents are now routed. To route a task by hand, ask Claude to "rou
 
 Without the plugin, copy `scripts/router.py` and `config/default.json` (as `scripts/` and `config/`) into a project and run `python3 scripts/router.py --help`.
 
+## What the benchmark found
+
+21 real GitHub issues from [SWE-bench Verified](https://www.swebench.com/) (pytest and pylint), each run on all four rungs with Claude Code: 84 runs, every one published.
+
+1. **Start cheap and jump straight to Opus on failure.** Sonnet medium first, Opus high if it fails: 20 of 21 solved for **$4.01**, against **$4.62** for always using Opus high (same tasks solved, 13% less). It also won on the half of the tasks that no tuning saw. This is now the default (`"retry_jumps_model": true`).
+2. **The in-between rungs rarely pay.** More effort on Sonnet rescued 1 task out of 7 that Sonnet medium failed; Opus xhigh solved nothing Opus high did not, for more money.
+3. **Reading a raw bug report does not predict its difficulty well.** Neither the word rules nor the Haiku assessor picked out the hard issues in advance, so on plain issues the router's first choice was the cheap rung, and climbing did the rest. The router earns its place with explicit facts (`**Critical:**`, `**Risk:**`, labels, paths), where a wrong first choice is expensive, not by guessing difficulty from prose.
+4. **There is room left.** Knowing in advance which rung would work costs **$2.70** for the same 20 tasks: a better predictor could still save about a third. Tell us what predicts it in your tasks.
+
+Caveats: one run per task and rung (models vary run to run), bug fixes in two Python libraries, costs are Claude Code's own estimates, and "failure" here is the hidden tests failing; in real work your worker's own tests and review have to catch it.
+
 ## Benchmark results
 
 <!-- results:start -->
-15 SWE-bench Verified tasks, each run once on every rung with Claude Code in headless mode (`--bare` or `--safe-mode`: no user customizations; per-run budget cap). Solved = every hidden test passes. Cost = Claude Code's own `total_cost_usd` estimate. One run per task and rung: small numbers, read them as a pilot.
+21 SWE-bench Verified tasks, each run once on every rung with Claude Code in headless mode (`--bare` or `--safe-mode`: no user customizations; per-run budget cap). Solved = every hidden test passes. Cost = Claude Code's own `total_cost_usd` estimate. One run per task and rung: small numbers, read them as a pilot.
 
 | Way of choosing | Tasks solved | Total cost | Cost per solved task |
 |---|---|---|---|
-| Always sonnet medium | 8/15 | $1.22 | $0.15 |
-| Always sonnet high | 9/15 | $1.32 | $0.15 |
-| Always opus high | 14/15 | $3.43 | $0.25 |
-| Always opus xhigh | 14/15 | $4.22 | $0.30 |
-| Start at the bottom, climb on failure | 14/15 | $3.99 | $0.28 |
-| Start at the bottom, jump to the next model on failure | 14/15 | $3.61 | $0.26 |
-| Router (rules only) | 8/15 | $1.22 | $0.15 |
-| Router (rules only), climb on failure | 14/15 | $3.99 | $0.28 |
-| Router (with assessor) | 8/15 | $1.27 | $0.16 |
-| Router (with assessor), climb on failure | 14/15 | $4.04 | $0.29 |
-| Cheapest rung that worked (hindsight) | 14/15 | $2.30 | $0.16 |
+| Always sonnet medium | 14/21 | $1.62 | $0.12 |
+| Always sonnet high | 15/21 | $1.78 | $0.12 |
+| Always opus high | 20/21 | $4.62 | $0.23 |
+| Always opus xhigh | 20/21 | $5.50 | $0.28 |
+| Start at the bottom, climb on failure | 20/21 | $4.38 | $0.22 |
+| Start at the bottom, jump to the next model on failure | 20/21 | $4.01 | $0.20 |
+| Router (rules only) | 14/21 | $1.78 | $0.13 |
+| Router (rules only), climb on failure | 20/21 | $4.54 | $0.23 |
+| Router (with assessor) | 14/21 | $1.85 | $0.13 |
+| Router (with assessor), climb on failure | 20/21 | $4.61 | $0.23 |
+| Cheapest rung that worked (hindsight) | 20/21 | $2.70 | $0.13 |
 
 Router costs include the assessor's own model call. Climb on failure = if the chosen rung fails, run the next one up, paying for every attempt.
 
 **Tuned on one half, tested on the other.**
 
-The 15 tasks are split in a fixed way (every other task by id). 20 starting rules and climbing styles were tried on the tuning half only; the best is scored here on the test half, which it never saw. Chosen: router with the assessor, thresholds [[1, 2], [0, 1]] (points to rung), climb one rung on failure.
+The 21 tasks are split in a fixed way (every other task by id). 24 starting rules and climbing styles were tried on the tuning half only; the best is scored here on the test half, which it never saw. Chosen: router with the assessor, thresholds [[2, 2], [0, 0]] (points to rung), jump to the next model on failure.
 
 | Way of choosing (test half) | Tasks solved | Total cost | Cost per solved task |
 |---|---|---|---|
-| Always sonnet medium | 5/7 | $0.48 | $0.10 |
-| Always sonnet high | 5/7 | $0.54 | $0.11 |
-| Always opus high | 7/7 | $1.33 | $0.19 |
-| Always opus xhigh | 7/7 | $1.71 | $0.24 |
-| Start at the bottom, climb on failure | 7/7 | $1.15 | $0.16 |
-| Start at the bottom, jump to the next model on failure | 7/7 | $0.99 | $0.14 |
-| Router (default rules) | 5/7 | $0.48 | $0.10 |
-| Router (default rules), climb on failure | 7/7 | $1.15 | $0.16 |
-| Cheapest rung that worked (hindsight) | 7/7 | $0.87 | $0.12 |
-| **Tuned router (chosen on the other half)** | 7/7 | $1.15 | $0.16 |
+| Always sonnet medium | 8/10 | $0.68 | $0.08 |
+| Always sonnet high | 8/10 | $0.75 | $0.09 |
+| Always opus high | 10/10 | $1.87 | $0.19 |
+| Always opus xhigh | 10/10 | $2.36 | $0.24 |
+| Start at the bottom, climb on failure | 10/10 | $1.35 | $0.14 |
+| Start at the bottom, jump to the next model on failure | 10/10 | $1.20 | $0.12 |
+| Router (default rules) | 8/10 | $0.84 | $0.10 |
+| Router (default rules), climb on failure | 10/10 | $1.51 | $0.15 |
+| Cheapest rung that worked (hindsight) | 10/10 | $1.07 | $0.11 |
+| **Tuned router (chosen on the other half)** | 10/10 | $1.38 | $0.14 |
 
 Per task, with every run's cost: [bench/results/REPORT.md](bench/results/REPORT.md).
 <!-- results:end -->
@@ -85,7 +96,7 @@ How it was measured, and how to rerun it: [bench/README.md](bench/README.md). Ev
 
 **Words only guess.** A task often mentions a critical part to say it does *not* change. Sentences with "no", "not", "never" or "unchanged" are skipped, guesses are labelled "guessed", and a risk found only in words is named but does not move the choice.
 
-**Retries.** `--retry N --cause worker` climbs the ladder; `--cause environment` or `task` does not, because a bigger model fixes neither. With `"retry_jumps_model": true`, a retry goes straight to the next model instead of more effort on the same one.
+**Retries.** `--retry N --cause worker` moves up; `--cause environment` or `task` does not, because a bigger model fixes neither. By default a retry jumps straight to the next model (Sonnet to Opus high) instead of adding effort on the same model, because that was cheaper in the benchmark; set `"retry_jumps_model": false` to climb one rung at a time.
 
 **The assessor (optional).** When a task says little about its size (a short issue, a one-line prompt), `--assess` asks a cheap model (Haiku, low effort, read-only) to read the task and the code and estimate the size and the files likely to change. It cost under a cent per task in the benchmark.
 
@@ -115,7 +126,7 @@ On Windows use `python` instead of `python3`.
 ## FAQ
 
 **Which Claude model should a subagent use?**
-It depends on the task, which is the point of this plugin. In our benchmark the cheaper model solved the easy tasks for a fraction of the cost, and the harder ones needed Opus; see the results above for the numbers.
+On our benchmark of real bug fixes: start on Sonnet (medium effort) and switch to Opus (high effort) if it fails. Sonnet medium solved 14 of 21 tasks at about $0.08 a run; Opus high solved 20 of 21 at about $0.22 a run; starting on Sonnet and jumping to Opus on failure solved 20 for 13% less than always using Opus. Mark tasks that touch money, security, stored data or your system's critical part, and the router starts those on Opus directly.
 
 **How do I set the model and effort of a Claude Code subagent?**
 Per call, with the Agent tool's `model` and `effort` parameters; per subagent, with `model:` and `effort:` in its frontmatter; for a session, `claude --model opus --effort high`. This plugin's hook fills the Agent tool's parameters for you.
@@ -127,7 +138,7 @@ Per call, with the Agent tool's `model` and `effort` parameters; per subagent, w
 No. On a model without it, Claude Code quietly runs the highest level it supports (for example `high`).
 
 **Is climbing from the cheapest model up the cheapest way?**
-Not always: a failed attempt is paid for too. The benchmark compares "always one rung", "start at the bottom and climb", the router, and the cheapest rung that would have worked in hindsight.
+Climbing one rung at a time was not: the failed attempts on Sonnet high cost more than they saved. Jumping from Sonnet medium straight to Opus high was the cheapest approach that solved everything Opus did. Is Opus xhigh worth it over Opus high? Not on these tasks.
 
 **How is this different from other routers?**
 Most routers (for example claude-model-router, Jev-Router, RouteLLM) judge difficulty from the wording of a prompt, or learn it from preference data. This one reads the task's own facts and the repository, keeps risk separate from size, explains every choice, and publishes a benchmark you can rerun. Those tools route in ways this one does not (per turn, learned routers); pick what fits.
