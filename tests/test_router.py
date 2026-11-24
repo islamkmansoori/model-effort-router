@@ -248,6 +248,13 @@ def main() -> int:
     fac = router.repo_facts(pathlib.Path("."), "Fix totals\nsrc/billing/invoice.py", CFG, files=files, churn={})
     check(fac["touched"] == ["src/billing/invoice.py"], "files the assessor names are looked up in the repository", fac)
 
+    print("== climbing to the next model")
+    lad = CFG["ladder"]
+    check([router.climb(k, lad, True) for k in range(4)] == [2, 2, 3, 3], "jumping skips more effort on the same model")
+    check([router.climb(k, lad, False) for k in range(4)] == [1, 2, 3, 3], "without the jump, one rung at a time")
+    cj = dict(CFG, retry_jumps_model=True)
+    check(router.score_text(task("S", 1), cj, retry=1, cause="worker")["model"] == "opus", "a jumping retry goes from sonnet to opus")
+
     print(f"\n{failures} failed")
     return 1 if failures else 0
 

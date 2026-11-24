@@ -6,7 +6,9 @@
   "score": 2,
   "reasons": [
    "size ? (+2)"
-  ]
+  ],
+  "assess_cost_usd": 0,
+  "assessed": null
  },
  "pytest-dev__pytest-7982": {
   "rung": 0,
@@ -15,7 +17,9 @@
   "score": 2,
   "reasons": [
    "size ? (+2)"
-  ]
+  ],
+  "assess_cost_usd": 0,
+  "assessed": null
  },
  "pytest-dev__pytest-7571": {
   "rung": 0,
@@ -24,7 +28,9 @@
   "score": 2,
   "reasons": [
    "size ? (+2)"
-  ]
+  ],
+  "assess_cost_usd": 0,
+  "assessed": null
  },
  "pytest-dev__pytest-5840": {
   "rung": 0,
@@ -33,7 +39,9 @@
   "score": 2,
   "reasons": [
    "size ? (+2)"
-  ]
+  ],
+  "assess_cost_usd": 0,
+  "assessed": null
  },
  "pytest-dev__pytest-5787": {
   "rung": 0,
@@ -42,6 +50,186 @@
   "score": 2,
   "reasons": [
    "size ? (+2)"
-  ]
+  ],
+  "assess_cost_usd": 0,
+  "assessed": null
+ },
+ "pylint-dev__pylint-4604": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 2,
+  "reasons": [
+   "size ? (+2)"
+  ],
+  "assess_cost_usd": 0,
+  "assessed": null
+ },
+ "pylint-dev__pylint-4970": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 2,
+  "reasons": [
+   "size ? (+2)"
+  ],
+  "assess_cost_usd": 0,
+  "assessed": null
+ },
+ "pylint-dev__pylint-6386": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 2,
+  "reasons": [
+   "size ? (+2)"
+  ],
+  "assess_cost_usd": 0,
+  "assessed": null
+ },
+ "pylint-dev__pylint-8898": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 2,
+  "reasons": [
+   "size ? (+2)"
+  ],
+  "assess_cost_usd": 0,
+  "assessed": null
+ },
+ "pytest-dev__pytest-10051": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 2,
+  "reasons": [
+   "size ? (+2)"
+  ],
+  "assess_cost_usd": 0,
+  "assessed": null
+ },
+ "pytest-dev__pytest-10081": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 2,
+  "reasons": [
+   "size ? (+2)"
+  ],
+  "assess_cost_usd": 0,
+  "assessed": null
+ },
+ "pytest-dev__pytest-10356": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 2,
+  "reasons": [
+   "size ? (+2)"
+  ],
+  "assess_cost_usd": 0,
+  "assessed": null
+ },
+ "pytest-dev__pytest-5631": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 2,
+  "reasons": [
+   "size ? (+2)"
+  ],
+  "assess_cost_usd": 0,
+  "assessed": null
+ },
+ "pytest-dev__pytest-5809": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 2,
+  "reasons": [
+   "size ? (+2)"
+  ],
+  "assess_cost_usd": 0,
+  "assessed": null
+ },
+ "pytest-dev__pytest-6197": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 2,
+  "reasons": [
+   "size ? (+2)"
+  ],
+  "assess_cost_usd": 0,
+  "assessed": null
+ },
+ "pytest-dev__pytest-6202": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 2,
+  "reasons": [
+   "size ? (+2)"
+  ],
+  "assess_cost_usd": 0,
+  "assessed": null
+ },
+ "pytest-dev__pytest-7205": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 3,
+  "reasons": [
+   "size ? (+2)",
+   "touches 4 files (+1)"
+  ],
+  "assess_cost_usd": 0,
+  "assessed": null
+ },
+ "pytest-dev__pytest-7236": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 2,
+  "reasons": [
+   "size ? (+2)"
+  ],
+  "assess_cost_usd": 0,
+  "assessed": null
+ },
+ "pytest-dev__pytest-7324": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 2,
+  "reasons": [
+   "size ? (+2)"
+  ],
+  "assess_cost_usd": 0,
+  "assessed": null
+ },
+ "pytest-dev__pytest-7490": {
+  "rung": 3,
+  "model": "opus",
+  "effort": "xhigh",
+  "score": 2,
+  "reasons": [
+   "size ? (+2)",
+   "critical part changes: top of the ladder (guessed: add **Critical:** yes or no)"
+  ],
+  "assess_cost_usd": 0,
+  "assessed": null
+ },
+ "pytest-dev__pytest-8399": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 2,
+  "reasons": [
+   "size ? (+2)"
+  ],
+  "assess_cost_usd": 0,
+  "assessed": null
  }
 }

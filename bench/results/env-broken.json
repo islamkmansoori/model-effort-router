@@ -9,5 +9,71 @@
  "pytest-dev__pytest-5787": [
   "testing/code/test_excinfo.py::TestFormattedExcinfo::test_exc_chain_repr_without_traceback[cause-The",
   "testing/code/test_excinfo.py::TestFormattedExcinfo::test_exc_chain_repr_without_traceback[context-During"
+ ],
+ "pylint-dev__pylint-8898": [
+  "tests/config/test_config.py::test_csv_regex_comma_in_quantifier[foo,"
+ ],
+ "pytest-dev__pytest-10081": [
+  "testing/test_unittest.py::test_setup_inheritance_skipping[test_setup_skip.py-1",
+  "testing/test_unittest.py::test_setup_inheritance_skipping[test_setup_skip_class.py-1",
+  "testing/test_unittest.py::test_setup_inheritance_skipping[test_setup_skip_module.py-1"
+ ],
+ "pytest-dev__pytest-10356": [
+  "testing/test_mark.py::test_pytest_param_id_allows_none_or_string[hello",
+  "testing/test_mark.py::test_mark_option[(((",
+  "testing/test_mark.py::test_mark_option[not",
+  "testing/test_mark.py::test_mark_option[xyz",
+  "testing/test_mark.py::test_mark_option_custom[not",
+  "testing/test_mark.py::test_keyword_option_custom[not",
+  "testing/test_mark.py::test_keyword_option_custom[1",
+  "testing/test_mark.py::test_keyword_option_wrong_arguments[foo",
+  "testing/test_mark.py::test_keyword_option_wrong_arguments[(foo-at",
+  "testing/test_mark.py::test_keyword_option_wrong_arguments[or",
+  "testing/test_mark.py::test_keyword_option_wrong_arguments[not",
+  "testing/test_mark.py::TestKeywordSelection::test_select_extra_keywords[xxx",
+  "testing/test_mark.py::TestKeywordSelection::test_select_extra_keywords[TestClass",
+  "testing/test_mark.py::test_marker_expr_eval_failure_handling[NOT"
+ ],
+ "pytest-dev__pytest-6197": [
+  "testing/test_skipping.py::TestXFail::test_xfail_raises[TypeError-TypeError-*1",
+  "testing/test_skipping.py::TestXFail::test_xfail_raises[(AttributeError,",
+  "testing/test_skipping.py::TestXFail::test_xfail_raises[TypeError-IndexError-*1",
+  "testing/test_skipping.py::TestSkipif::test_skipif_reporting[\"hasattr(sys,",
+  "testing/test_skipping.py::TestSkipif::test_skipif_reporting[True,"
+ ],
+ "pytest-dev__pytest-7236": [
+  "testing/test_unittest.py::test_setup_inheritance_skipping[test_setup_skip.py-1",
+  "testing/test_unittest.py::test_setup_inheritance_skipping[test_setup_skip_class.py-1",
+  "testing/test_unittest.py::test_setup_inheritance_skipping[test_setup_skip_module.py-1"
+ ],
+ "pytest-dev__pytest-7324": [
+  "testing/test_mark_expression.py::test_basic[not",
+  "testing/test_mark_expression.py::test_basic[true",
+  "testing/test_mark_expression.py::test_basic[false",
+  "testing/test_mark_expression.py::test_basic[(not",
+  "testing/test_mark_expression.py::test_syntax_oddeties[",
+  "testing/test_mark_expression.py::test_syntax_oddeties[(",
+  "testing/test_mark_expression.py::test_syntax_oddeties[not",
+  "testing/test_mark_expression.py::test_syntax_errors[(-2-expected",
+  "testing/test_mark_expression.py::test_syntax_errors[",
+  "testing/test_mark_expression.py::test_syntax_errors[)-1-expected",
+  "testing/test_mark_expression.py::test_syntax_errors[)",
+  "testing/test_mark_expression.py::test_syntax_errors[not-4-expected",
+  "testing/test_mark_expression.py::test_syntax_errors[not",
+  "testing/test_mark_expression.py::test_syntax_errors[(not)-5-expected",
+  "testing/test_mark_expression.py::test_syntax_errors[and-1-expected",
+  "testing/test_mark_expression.py::test_syntax_errors[ident"
+ ],
+ "pytest-dev__pytest-7490": [
+  "testing/test_skipping.py::TestXFail::test_xfail_raises[TypeError-TypeError-*1",
+  "testing/test_skipping.py::TestXFail::test_xfail_raises[(AttributeError,",
+  "testing/test_skipping.py::TestXFail::test_xfail_raises[TypeError-IndexError-*1",
+  "testing/test_skipping.py::TestSkipif::test_skipif_reporting[\"hasattr(sys,",
+  "testing/test_skipping.py::TestSkipif::test_skipif_reporting[True,"
+ ],
+ "pytest-dev__pytest-8399": [
+  "testing/test_unittest.py::test_setup_inheritance_skipping[test_setup_skip.py-1",
+  "testing/test_unittest.py::test_setup_inheritance_skipping[test_setup_skip_class.py-1",
+  "testing/test_unittest.py::test_setup_inheritance_skipping[test_setup_skip_module.py-1"
  ]
 }

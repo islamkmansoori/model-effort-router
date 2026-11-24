@@ -333,14 +333,30 @@ def score_text(text: str, cfg: Dict[str, Any], retry: int = 0, cause: str = "wor
 
     # 4. retries: only the worker's own failures climb.
     if retry and cause == "worker":
-        step += retry
-        reasons.append(f"retry {retry}, the worker's own failures: {retry} rung(s) up")
+        jump = bool(cfg.get("retry_jumps_model"))
+        for _ in range(retry):
+            step = climb(step, ladder, jump)
+        reasons.append(f"retry {retry}, the worker's own failures: {retry} step(s) up"
+                       + (" (to the next model)" if jump else ""))
     elif retry:
         reasons.append(f"retry {retry} caused by the {cause}: same model and effort (fix the {cause} first)")
     model, effort = ladder[min(step, len(ladder) - 1)]
     return {"score": points, "model": model, "effort": effort, "rung": min(step, len(ladder) - 1),
             "critical": critical, "critical_source": critical_source, "risk": risk, "risk_source": risk_source,
             "risk_words": risk_words, "signals": signals, "touched": facts["touched"], "reasons": reasons}
+
+
+def climb(step: int, ladder: List[List[str]], jump_model: bool = False) -> int:
+    """The rung after a worker's own failure: the next one, or with jump_model the first rung of the next model
+    (the benchmark found more effort on the same model rarely rescues a task that model failed)."""
+    if step >= len(ladder) - 1:
+        return len(ladder) - 1
+    if not jump_model:
+        return step + 1
+    for k in range(step + 1, len(ladder)):
+        if ladder[k][0] != ladder[step][0]:
+            return k
+    return step + 1
 
 
 def score_task(task: Task, cfg: Dict[str, Any], retry: int = 0, cause: str = "worker",

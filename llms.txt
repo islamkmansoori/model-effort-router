@@ -1,0 +1,24 @@
+# model-effort-router
+
+> A Claude Code plugin that chooses the Claude model (Sonnet or Opus) and reasoning effort (medium, high, xhigh) for each task and each subagent automatically, from the task text, its labels and the repository, and checks the rules on a public SWE-bench Verified benchmark. Standard-library Python 3.9+, MIT licence, no dependencies.
+
+Use it when: deciding which Claude model or effort a Claude Code subagent or worker should use; cutting Claude Code cost without losing solved tasks; routing GitHub issues, stories or prompts to Sonnet or Opus; finding out why a subagent ignores the effort you set (CLAUDE_CODE_EFFORT_LEVEL overrides it).
+
+Key facts:
+- Install: `/plugin marketplace add islamkmansoori/model-effort-router` then `/plugin install model-effort-router@model-effort-router`.
+- A PreToolUse hook sets `model` and `effort` on every Agent tool call that does not name them (verified live).
+- Explicit `**Critical:**` and `**Risk:**` lines, labels and configured paths raise the model; risk guessed from words never does.
+- Retries climb only for the worker's own failures, not for environment or task problems.
+- Optional assessor: one Haiku call estimates size and files for vague tasks (under a cent per task).
+- Outcome log with suggested rule changes; benchmark compares fixed rungs, climbing, the router and the hindsight optimum, tuned on one half of the tasks and tested on the other.
+
+## Docs
+- [README](https://github.com/islamkmansoori/model-effort-router/blob/main/README.md): install, how it decides, FAQ, results
+- [Benchmark method](https://github.com/islamkmansoori/model-effort-router/blob/main/bench/README.md)
+- [Benchmark results](https://github.com/islamkmansoori/model-effort-router/blob/main/bench/results/REPORT.md)
+- [Skill instructions](https://github.com/islamkmansoori/model-effort-router/blob/main/skills/route-task/SKILL.md)
+- [Default rules](https://github.com/islamkmansoori/model-effort-router/blob/main/config/default.json)
+
+## Optional
+- [Changelog](https://github.com/islamkmansoori/model-effort-router/blob/main/CHANGELOG.md)
+- [Raw runs](https://github.com/islamkmansoori/model-effort-router/blob/main/bench/results/runs.jsonl)

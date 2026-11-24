@@ -337,6 +337,10 @@ def run(ts: List[Dict[str, Any]], rungs: List[int], run_budget: float, total_bud
         if spent() + run_budget > total_budget:
             print(f"skip {t['instance_id']} rung {k}: the total budget would be exceeded")
             return
+        free_gb = shutil.disk_usage(str(WORK.parent if WORK.parent.exists() else HERE)).free / 1e9
+        if free_gb < 5:
+            print(f"skip {t['instance_id']} rung {k}: only {free_gb:.1f} GB free on disk (need 5)")
+            return
         try:
             rec = one_run(t, k, run_budget, max_turns)
         except Exception as e:  # noqa: BLE001
@@ -366,33 +370,98 @@ def strategies(runs: Dict[str, Dict[str, Any]], routes: Dict[str, Dict[str, Dict
     def ok(i: str, k: int) -> bool:
         return bool(res(i, k).get("resolved"))
 
-    def climb(i: str, start: int) -> Tuple[bool, float]:
-        c = 0.0
-        for k in range(start, len(LADDER)):
+    def climb(i: str, start: int, jump: bool = False) -> Tuple[bool, float]:
+        c, k = 0.0, start
+        while True:
             c += cost(i, k)
             if ok(i, k):
                 return True, c
-        return False, c
+            if k >= len(LADDER) - 1:
+                return False, c
+            k = router.climb(k, [list(x) for x in LADDER], jump)
 
     out: Dict[str, Dict[str, Any]] = {}
     for k, (m, e) in enumerate(LADDER):
         out[f"Always {m} {e}"] = {"solved": sum(ok(i, k) for i in ids), "cost": sum(cost(i, k) for i in ids)}
     s = [climb(i, 0) for i in ids]
     out["Start at the bottom, climb on failure"] = {"solved": sum(x[0] for x in s), "cost": sum(x[1] for x in s)}
+    s = [climb(i, 0, True) for i in ids]
+    out["Start at the bottom, jump to the next model on failure"] = {"solved": sum(x[0] for x in s), "cost": sum(x[1] for x in s)}
     for label, rt in routes.items():
         if not all(i in rt for i in ids):
             continue
         extra = sum(float(rt[i].get("assess_cost_usd") or 0) for i in ids)
         out[f"Router {label}"] = {"solved": sum(ok(i, rt[i]["rung"]) for i in ids),
                                   "cost": sum(cost(i, rt[i]["rung"]) for i in ids) + extra}
-        s = [climb(i, rt[i]["rung"]) for i in ids]
-        out[f"Router {label}, climb on failure"] = {"solved": sum(x[0] for x in s), "cost": sum(x[1] for x in s) + extra}
+        jump = bool(rt[ids[0]].get("jump", False))
+        s = [climb(i, rt[i]["rung"], jump) for i in ids]
+        out[f"Router {label}, {'jump' if jump else 'climb'} on failure"] = {"solved": sum(x[0] for x in s),
+                                                                            "cost": sum(x[1] for x in s) + extra}
     best = []
     for i in ids:
         wins = [cost(i, k) for k in range(len(LADDER)) if ok(i, k)]
         best.append((bool(wins), min(wins) if wins else 0.0))
     out["Cheapest rung that worked (hindsight)"] = {"solved": sum(x[0] for x in best), "cost": sum(x[1] for x in best)}
     return out
+
+
+def rung_for(score: int, critical: bool, thresholds: List[List[int]]) -> int:
+    if critical:
+        return len(LADDER) - 1
+    for at_least, rung in thresholds:
+        if score >= at_least:
+            return rung
+    return 0
+
+
+def halves(ids: List[str]) -> Tuple[List[str], List[str]]:
+    """A fixed split: every other task (sorted by id) tunes, the rest tests. Nothing random, so anyone gets the same."""
+    s = sorted(ids)
+    return s[0::2], s[1::2]
+
+
+def tune() -> int:
+    """Try starting rules and climbing styles on the tuning half; score the best on the test half it never saw."""
+    runs = done_runs()
+    ids = sorted({r["instance_id"] for r in runs.values() if all(f"{r['instance_id']}|{k}" in runs for k in range(len(LADDER)))})
+    if len(ids) < 6:
+        print("Too few complete tasks to tune.")
+        return 1
+    tune_ids, test_ids = halves(ids)
+    base = {lbl: json.loads((RESULTS / f).read_text(encoding="utf-8")) for lbl, f in
+            (("rules", "routes.json"), ("assessor", "routes-assessed.json")) if (RESULTS / f).exists()}
+    cands: List[Dict[str, Any]] = []
+    for src, rt in base.items():
+        if not all(i in rt for i in ids):
+            continue
+        for cut in range(0, 6):
+            for low in (0, 1, 2):
+                for jump in (False, True):
+                    th = [[cut, 2], [0, low]] if low < 2 else [[0, 2]]
+                    routes = {i: {"rung": rung_for(rt[i]["score"], any("critical part changes" in x for x in rt[i]["reasons"]), th),
+                                  "assess_cost_usd": rt[i].get("assess_cost_usd", 0), "jump": jump} for i in ids}
+                    cands.append(dict(source=src, thresholds=th, jump=jump, routes=routes))
+    def score_on(c: Dict[str, Any], part: List[str]) -> Dict[str, Any]:
+        st = strategies(runs, {"x": c["routes"]}, part)
+        key = [k for k in st if k.startswith("Router x,")][0]
+        return st[key]
+    seen = set()
+    uniq = []
+    for c in cands:
+        sig = (c["source"], c["jump"], tuple(c["routes"][i]["rung"] for i in ids))
+        if sig not in seen:
+            seen.add(sig)
+            uniq.append(c)
+    best = min(uniq, key=lambda c: (-score_on(c, tune_ids)["solved"], score_on(c, tune_ids)["cost"]))
+    default = {i: {**v, "jump": False} for i, v in base.get("rules", {}).items()}
+    tuned_test = score_on(best, test_ids)
+    out = {"tune_ids": tune_ids, "test_ids": test_ids, "candidates": len(uniq),
+           "chosen": {"source": best["source"], "thresholds": best["thresholds"], "retry_jumps_model": best["jump"]},
+           "tuned_on_tune_half": score_on(best, tune_ids), "tuned_on_test_half": tuned_test,
+           "test_half_baselines": strategies(runs, {"(default rules)": default} if default else {}, test_ids)}
+    (RESULTS / "tuning.json").write_text(json.dumps(out, indent=1), encoding="utf-8")
+    print(json.dumps({k: v for k, v in out.items() if k not in ("tune_ids", "test_ids")}, indent=1))
+    return 0
 
 
 def report() -> int:
@@ -427,10 +496,41 @@ def report() -> int:
             cells.append(f"{'solved' if r.get('resolved') else 'not solved'} ${float(r.get('cost_usd') or 0):.2f}")
         ch = " / ".join(f"{rt[i]['model']} {rt[i]['effort']}" if i in rt else "-" for rt in routes.values()) or "-"
         lines.append(f"| {i} | {diff[i]} | {ch} | " + " | ".join(cells) + " |")
+    tp = RESULTS / "tuning.json"
+    if tp.exists():
+        tu = json.loads(tp.read_text(encoding="utf-8"))
+        ch = tu["chosen"]
+        n = len(tu["test_ids"])
+        lines += ["", "## Tuned on one half, tested on the other", "",
+                  f"The {len(tu['tune_ids']) + n} tasks are split in a fixed way (every other task by id). {tu['candidates']} starting "
+                  "rules and climbing styles were tried on the tuning half only; the best is scored here on the test half, "
+                  f"which it never saw. Chosen: router with {'the assessor' if ch['source'] == 'assessor' else 'rules only'}, "
+                  f"thresholds {ch['thresholds']} (points to rung), "
+                  f"{'jump to the next model' if ch['retry_jumps_model'] else 'climb one rung'} on failure.", "",
+                  "| Way of choosing (test half) | Tasks solved | Total cost | Cost per solved task |", "|---|---|---|---|"]
+        rows = dict(tu["test_half_baselines"])
+        rows["**Tuned router (chosen on the other half)**"] = tu["tuned_on_test_half"]
+        for name, v in rows.items():
+            per = f"${v['cost'] / v['solved']:.2f}" if v["solved"] else "-"
+            lines.append(f"| {name} | {v['solved']}/{n} | ${v['cost']:.2f} | {per} |")
     errs = [r for r in runs.values() if r.get("setup_error")]
     if errs:
         lines += ["", f"Setup errors (counted as not solved): {len(errs)}."]
     (RESULTS / "REPORT.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    readme = HERE.parent / "README.md"
+    if readme.exists():
+        # The README shows the summary tables (everything before the per-task table, plus the tuning section).
+        cut = lines.index("## Each task")
+        block = lines[2:cut]
+        if "## Tuned on one half, tested on the other" in lines:
+            i = lines.index("## Tuned on one half, tested on the other")
+            block += ["**Tuned on one half, tested on the other.**"] + [x for x in lines[i + 1:] if not x.startswith("Setup errors")]
+        block += ["", "Per task, with every run's cost: [bench/results/REPORT.md](bench/results/REPORT.md)."]
+        text = readme.read_text(encoding="utf-8")
+        a, b = "<!-- results:start -->", "<!-- results:end -->"
+        if a in text and b in text:
+            text = text[: text.index(a) + len(a)] + "\n" + "\n".join(block).strip() + "\n" + text[text.index(b):]
+            readme.write_text(text, encoding="utf-8")
     (RESULTS / "report.json").write_text(json.dumps({"tasks": ids, "strategies": st}, indent=1), encoding="utf-8")
     print("\n".join(lines))
     return 0
@@ -458,12 +558,15 @@ def main(argv: List[str]) -> int:
                            help="api: --bare with ANTHROPIC_API_KEY (billed); login: your Claude login in safe mode "
                                 "(uses your plan's limits)")
     sub.add_parser("report")
+    sub.add_parser("tune", help="tune on half the tasks, test on the other half (free: uses finished runs)")
     a = ap.parse_args(argv)
     if a.cmd == "fetch":
         fetch()
         return 0
     if a.cmd == "report":
         return report()
+    if a.cmd == "tune":
+        return tune()
     ts = tasks(a.set, a.ids)
     if a.cmd == "validate":
         return validate(ts)

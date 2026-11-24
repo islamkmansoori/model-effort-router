@@ -3,39 +3,21 @@
   "rung": 0,
   "model": "sonnet",
   "effort": "medium",
-  "score": 0,
+  "score": 1,
   "reasons": [
-   "size XS assessed (+0)"
+   "size S assessed (+1)"
   ],
-  "assess_cost_usd": 0.00340032,
+  "assess_cost_usd": 0.0037608000000000008,
   "assessed": {
-   "size": "XS",
+   "size": "S",
    "files": [
-    "src/_pytest/skipping.py"
+    "src/_pytest/skipping.py",
+    "changelog/7432.bugfix.rst"
    ],
-   "reason": "The `elif item.config.option.runxfail: pass` branch in pytest_runtest_makereport (skipping.py:273-274) short-circuits the elif chain, so the skip-location fix-up at lines 294-305 never runs when --runxfail is set; the fix is to stop that branch from swallowing the later skip case, which is a few-line change in one file."
+   "reason": "In `pytest_runtest_makereport`, the `elif item.config.option.runxfail: pass` branch short-circuits before the skip-location handling, so an unconditional skip reports the location inside skipping.py; the fix is to let skip-mark reports through that branch, plus a changelog entry and a regression test."
   }
  },
  "pytest-dev__pytest-7982": {
-  "rung": 0,
-  "model": "sonnet",
-  "effort": "medium",
-  "score": 0,
-  "reasons": [
-   "size XS assessed (+0)"
-  ],
-  "assess_cost_usd": 0.0025503,
-  "assessed": {
-   "size": "XS",
-   "files": [
-    "src/_pytest/pathlib.py",
-    "testing/test_collection.py",
-    "changelog/7982.bugfix.rst"
-   ],
-   "reason": "The regression comes from one call at src/_pytest/pathlib.py:561, which uses `entry.is_dir(follow_symlinks=False)`; removing that argument restores following symlinked directories, plus a regression test and changelog entry."
-  }
- },
- "pytest-dev__pytest-7571": {
   "rung": 0,
   "model": "sonnet",
   "effort": "medium",
@@ -43,15 +25,32 @@
   "reasons": [
    "size S assessed (+1)"
   ],
-  "assess_cost_usd": 0.00323515,
+  "assess_cost_usd": 0.0023521799999999997,
   "assessed": {
    "size": "S",
    "files": [
-    "src/_pytest/logging.py",
-    "testing/logging/test_fixture.py",
-    "changelog/"
+    "src/_pytest/pathlib.py",
+    "testing/test_pathlib.py",
+    "changelog/7982.bugfix.rst"
    ],
-   "reason": "The fix is a small change to caplog's level bookkeeping in src/_pytest/logging.py (save and restore the handler level) plus a regression test; no money, security, or stored-data risk. I only grepped the code, so the exact fix is unconfirmed."
+   "reason": "The fix is removing `follow_symlinks=False` from the directory check in `visit()` at src/_pytest/pathlib.py:561, plus a regression test and changelog entry; it affects only which directories are walked during collection."
+  }
+ },
+ "pytest-dev__pytest-7571": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 0,
+  "reasons": [
+   "size XS assessed (+0)"
+  ],
+  "assess_cost_usd": 0.00282725,
+  "assessed": {
+   "size": "XS",
+   "files": [
+    "src/_pytest/logging.py"
+   ],
+   "reason": "caplog.set_level records the original logger level but never restores the handler level, so the level leaks into later tests; the fix is a small change in src/_pytest/logging.py."
   }
  },
  "pytest-dev__pytest-5840": {
@@ -62,15 +61,14 @@
   "reasons": [
    "size S assessed (+1)"
   ],
-  "assess_cost_usd": 0.00363399,
+  "assess_cost_usd": 0.003956370000000001,
   "assessed": {
    "size": "S",
    "files": [
     "src/_pytest/pathlib.py",
-    "src/_pytest/config/__init__.py",
-    "testing/test_conftest.py"
+    "src/_pytest/config/__init__.py"
    ],
-   "reason": "The likely cause is path normalization: src/_pytest/pathlib.py:346 applies normcase(realpath(...)), which lowercases the conftest path on Windows, so _importconftest (src/_pytest/config/__init__.py:434) derives the wrong module name and fails. The fix is probably small plus a regression test, but I only grepped and did not read the function bodies."
+   "reason": "unique_path() in src/_pytest/pathlib.py applies normcase on Windows, lowercasing the conftest path so the derived package name ('python') no longer matches the real folder; the fix is to keep the original case for import while still deduplicating paths, plus a regression test. Estimate is from reading the source only, not verified by running it."
   }
  },
  "pytest-dev__pytest-5787": {
@@ -81,16 +79,313 @@
   "reasons": [
    "size M assessed (+2)"
   ],
-  "assess_cost_usd": 0.00466415,
+  "assess_cost_usd": 0.0035135200000000004,
   "assessed": {
    "size": "M",
    "files": [
     "src/_pytest/reports.py",
     "src/_pytest/_code/code.py",
     "testing/test_reports.py",
+    "changelog/5787.bugfix.rst"
+   ],
+   "reason": "The xdist path serializes only the last reprtraceback and reprcrash in BaseReport._to_json (src/_pytest/reports.py:154-190), so the change is to serialize the full ExceptionChainRepr chain and rebuild it in _from_json (lines 205-255), plus tests and a changelog entry."
+  }
+ },
+ "pylint-dev__pylint-4604": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 1,
+  "reasons": [
+   "size S assessed (+1)"
+  ],
+  "assess_cost_usd": 0.004239059999999999,
+  "assessed": {
+   "size": "S",
+   "files": [
+    "pylint/checkers/variables.py",
+    "tests/functional/u/unused/unused_import_assigned_to.py",
+    "tests/functional/u/unused/unused_import_assigned_to.txt",
+    "ChangeLog"
+   ],
+   "reason": "_store_type_annotation_node only records bare Name annotations and names inside Subscripts, so an Attribute annotation like abc.ABC is skipped and import abc is wrongly flagged; the fix is a small branch in variables.py plus a regression test (unverified, not run)."
+  }
+ },
+ "pylint-dev__pylint-4970": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 1,
+  "reasons": [
+   "size S assessed (+1)"
+  ],
+  "assess_cost_usd": 0.0026759,
+  "assessed": {
+   "size": "S",
+   "files": [
+    "pylint/checkers/similar.py",
+    "tests/checkers/unittest_similar.py",
+    "doc/whatsnew/fragments"
+   ],
+   "reason": "The fix is a short guard in pylint/checkers/similar.py (skip similarity computation when min_lines is 0), plus a test and a changelog fragment; no money, auth, or stored-data impact."
+  }
+ },
+ "pylint-dev__pylint-6386": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 2,
+  "reasons": [
+   "size S assessed (+1)",
+   "1 touched file(s) without tests (+1)"
+  ],
+  "assess_cost_usd": 0.00429954,
+  "assessed": {
+   "size": "S",
+   "files": [
+    "pylint/lint/base_options.py",
+    "pylint/config/utils.py"
+   ],
+   "reason": "The short -v flag takes the generic argparse path, which expects a value, while the long --verbose flag is preprocessed in pylint/config/utils.py. Making -v behave as a flag is a few lines plus a regression test."
+  }
+ },
+ "pylint-dev__pylint-8898": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 1,
+  "reasons": [
+   "size S assessed (+1)"
+  ],
+  "assess_cost_usd": 0.00375689,
+  "assessed": {
+   "size": "S",
+   "files": [
+    "pylint/config/argument.py",
+    "tests/config/test_argparse_config.py",
+    "doc/whatsnew/fragments/8898.bugfix"
+   ],
+   "reason": "The bug is in `_regexp_csv_transfomer` (pylint/config/argument.py:114), which splits on every comma before compiling, so the change is a regex-aware splitter (ignoring commas inside braces, brackets, or escapes) plus a test and changelog fragment; no calculation, auth, or stored data is touched."
+  }
+ },
+ "pytest-dev__pytest-10051": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 0,
+  "reasons": [
+   "size XS assessed (+0)"
+  ],
+  "assess_cost_usd": 0.00269143,
+  "assessed": {
+   "size": "XS",
+   "files": [
+    "src/_pytest/logging.py",
+    "testing/logging/test_fixture.py",
+    "changelog/10051.bugfix.rst"
+   ],
+   "reason": "The bug is that LogCaptureHandler.reset() (src/_pytest/logging.py:345) rebinds self.records to a new list instead of clearing it in place, so the list that caplog.get_records() holds (set at line 699) drifts apart; changing that to an in-place clear plus a regression test is a one-line fix."
+  }
+ },
+ "pytest-dev__pytest-10081": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 1,
+  "reasons": [
+   "size S assessed (+1)"
+  ],
+  "assess_cost_usd": 0.00296582,
+  "assessed": {
+   "size": "S",
+   "files": [
+    "src/_pytest/unittest.py",
+    "testing/test_unittest.py",
+    "changelog/10081.bugfix.rst"
+   ],
+   "reason": "The fix is likely a localized change in how unittest.py handles class-level skips under --pdb, plus a regression test and changelog entry, though I did not open the code to confirm this."
+  }
+ },
+ "pytest-dev__pytest-10356": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 2,
+  "reasons": [
+   "size S assessed (+1)",
+   "1 touched file(s) without tests (+1)"
+  ],
+  "assess_cost_usd": 0.0031568399999999997,
+  "assessed": {
+   "size": "S",
+   "files": [
+    "src/_pytest/mark/structures.py",
+    "changelog/10356.bugfix.rst"
+   ],
+   "reason": "Marks on classes are read through a single `pytestmark` attribute, so a class with two marked bases only keeps the MRO-first list; the fix is a localized change to how `get_unpacked_marks` or `store_mark` merges inherited marks, plus a regression test and changelog entry."
+  }
+ },
+ "pytest-dev__pytest-5631": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 0,
+  "reasons": [
+   "size XS assessed (+0)"
+  ],
+  "assess_cost_usd": 0.00282166,
+  "assessed": {
+   "size": "XS",
+   "files": [
+    "src/_pytest/compat.py"
+   ],
+   "reason": "The bug is one expression in num_mock_patch_args (src/_pytest/compat.py:71), where `p.new in sentinels` uses `==` and triggers numpy's ambiguous truth value; switching it to an identity check (`is`) for each sentinel is a one-line fix, plus a regression test and changelog entry."
+  }
+ },
+ "pytest-dev__pytest-5809": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 0,
+  "reasons": [
+   "size XS assessed (+0)"
+  ],
+  "assess_cost_usd": 0.00293167,
+  "assessed": {
+   "size": "XS",
+   "files": [
+    "src/_pytest/pastebin.py",
+    "testing/test_pastebin.py"
+   ],
+   "reason": "The fix is a one-line change of the hard-coded lexer from \"python3\" to \"text\" in the bpaste submission data (src/_pytest/pastebin.py line 82), plus possibly updating a test that asserts the lexer value."
+  }
+ },
+ "pytest-dev__pytest-6197": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 1,
+  "reasons": [
+   "size XS assessed (+0)",
+   "1 touched file(s) without tests (+1)"
+  ],
+  "assess_cost_usd": 0.00386287,
+  "assessed": {
+   "size": "XS",
+   "files": [
+    "src/_pytest/python.py",
+    "src/_pytest/main.py"
+   ],
+   "reason": "pytest_collect_file in src/_pytest/python.py matches __init__.py as a test module, so a guard restricting that match to real test packages, plus a regression test, should be a small change."
+  }
+ },
+ "pytest-dev__pytest-6202": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 0,
+  "reasons": [
+   "size XS assessed (+0)"
+  ],
+  "assess_cost_usd": 0.00394054,
+  "assessed": {
+   "size": "XS",
+   "files": [
+    "src/_pytest/python.py",
+    "testing/test_terminal.py",
     "changelog/"
    ],
-   "reason": "TestReport._to_json and _from_json in reports.py serialize only one ReprExceptionInfo, so the exception chain in ExceptionChainRepr is dropped when xdist sends the report; fixing it means serializing and rebuilding the whole chain, plus tests. This is based on reading the code only; nothing was run."
+   "reason": "The bad .replace(\".[\", \"[\") is a single line in src/_pytest/python.py, so the code change is one line plus a regression test and a changelog entry; the main effort is verifying that removing it doesn't break other tests."
+  }
+ },
+ "pytest-dev__pytest-7205": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 1,
+  "reasons": [
+   "size XS assessed (+0)",
+   "touches 4 files (+1)"
+  ],
+  "assess_cost_usd": 0.0030069100000000007,
+  "assessed": {
+   "size": "XS",
+   "files": [
+    "src/_pytest/setuponly.py"
+   ],
+   "reason": "The bug is a single line at src/_pytest/setuponly.py:69 that formats cached_param with str() (implicit via \"{}\".format), which triggers BytesWarning under -bb; switching it to saferepr or similar is a one-line change, with no calculation, auth, or stored-data impact."
+  }
+ },
+ "pytest-dev__pytest-7236": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 1,
+  "reasons": [
+   "size S assessed (+1)"
+  ],
+  "assess_cost_usd": 0.002422,
+  "assessed": {
+   "size": "S",
+   "files": [
+    "src/_pytest/unittest.py",
+    "testing/test_unittest.py",
+    "changelog/7236.bugfix.rst"
+   ],
+   "reason": "The fix is probably a small guard in the unittest integration so that, under --pdb, tearDown is skipped for skipped tests the same way it is without --pdb, plus a regression test and changelog entry; I did not open the files to confirm this."
+  }
+ },
+ "pytest-dev__pytest-7324": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 0,
+  "reasons": [
+   "size XS assessed (+0)"
+  ],
+  "assess_cost_usd": 0.0025787,
+  "assessed": {
+   "size": "XS",
+   "files": [
+    "src/_pytest/mark/expression.py"
+   ],
+   "reason": "The crash comes from `ast.Name(ident.value, ...)` at expression.py:164 building a Name node for identifiers \"None\", \"True\" or \"False\", which CPython's debug build asserts against; the fix is to emit `ast.NameConstant` for those three words (a few lines plus a test), and I changed nothing."
+  }
+ },
+ "pytest-dev__pytest-7490": {
+  "rung": 3,
+  "model": "opus",
+  "effort": "xhigh",
+  "score": 1,
+  "reasons": [
+   "size S assessed (+1)",
+   "critical part changes: top of the ladder (guessed: add **Critical:** yes or no)"
+  ],
+  "assess_cost_usd": 0.00415673,
+  "assessed": {
+   "size": "S",
+   "files": [
+    "src/_pytest/skipping.py",
+    "changelog/"
+   ],
+   "reason": "pytest_runtest_setup caches the xfail evaluation in item._store[xfailed_key] and pytest_runtest_makereport reads that cache without re-evaluating, so markers added during the test body are ignored; the fix is a small re-evaluation in skipping.py plus a regression test and changelog entry."
+  }
+ },
+ "pytest-dev__pytest-8399": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 0,
+  "reasons": [
+   "size XS assessed (+0)"
+  ],
+  "assess_cost_usd": 0.00358278,
+  "assessed": {
+   "size": "XS",
+   "files": [
+    "src/_pytest/unittest.py"
+   ],
+   "reason": "The generated unittest setUpClass fixture is named at src/_pytest/unittest.py:147 as unittest_{setup_name}_fixture_{qualname}; adding a leading underscore would make it private so pytest --fixtures hides it, a one-line change."
   }
  }
 }

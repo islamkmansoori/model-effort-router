@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+message: "If you use this software or its benchmark results, please cite it as below."
+title: "model-effort-router: choosing the Claude model and effort per task, with a SWE-bench benchmark"
+type: software
+authors:
+  - family-names: Mansoori
+    given-names: Islam
+version: 0.3.0
+date-released: 2026-11-25
+license: MIT
+repository-code: "https://github.com/islamkmansoori/model-effort-router"
+keywords:
+  - claude-code
+  - claude-code-plugin
+  - model-selection
+  - llm-routing
+  - reasoning-effort
+  - subagents
+  - cost-optimization
+  - swe-bench
+abstract: >-
+  A Claude Code plugin and command-line tool that chooses the Claude model (Sonnet or Opus) and reasoning
+  effort for each task or subagent from the task text, its labels and the repository, keeps an outcome log
+  that suggests better rules, and publishes a repeatable SWE-bench Verified benchmark comparing fixed
+  choices, climbing on failure, the router and the hindsight optimum.
