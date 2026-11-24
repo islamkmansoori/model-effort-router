@@ -1,0 +1,13 @@
+# Working on model-effort-router
+
+For AI coding agents and people changing this repository.
+
+- **What it is.** A Claude Code plugin that chooses the model and effort for a task or a subagent. `scripts/router.py` does the scoring and the command line, `scripts/route_agent.py` is the PreToolUse hook for the Agent tool, `config/default.json` holds every rule, `skills/route-task/SKILL.md` tells Claude how to use it, and `bench/` is the SWE-bench benchmark.
+- **Standard library only, Python 3.9+.** Do not add a dependency. Do not use syntax newer than 3.9 at run time (`X | Y` types only inside annotations, which `from __future__ import annotations` keeps as strings).
+- **Rules live in the config, not the code.** A new signal, risk kind, label or path rule is a config entry plus a test, not a new `if`.
+- **Guesses never raise cost.** Risk and critical inferred from words, or suggested by the assessor, are only *named* in the reasons. Only explicit lines (`**Critical:**`, `**Risk:**`), labels and configured paths act. Keep it that way: it is the main design promise.
+- **The hook must never break a session.** Any error in `route_agent.py` means: print nothing, exit 0.
+- **Test before you finish.** `python3 -I tests/test_router.py` must print `0 failed`. CI runs it on Linux, macOS and Windows with Python 3.9, 3.12 and 3.13.
+- **Validate the plugin.** `claude plugin validate . --strict` must pass.
+- **The benchmark costs money or plan usage.** `bench/run.py validate` and `route` (without `--assess`) are free; `run` and `route --assess` call Claude. Never start a paid run without a `--total-budget`.
+- **Versions.** Bump `version` in `.claude-plugin/plugin.json` and `VERSION` in `scripts/router.py` together, and add a `CHANGELOG.md` entry.

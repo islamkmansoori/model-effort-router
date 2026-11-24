@@ -185,6 +185,17 @@
     ],
     "respect_explicit": true,
     "permission_decision": null,
-    "runs_log": ".claude/model-router-runs.jsonl"
+    "runs_log": ".claude/model-router-runs.jsonl",
+    "assess": false
+  },
+  "assess": {
+    "model": "haiku",
+    "effort": "low",
+    "max_budget_usd": 0.1,
+    "read_repo": true,
+    "max_turns": 8,
+    "timeout": 180,
+    "max_chars": 12000,
+    "critical_meaning": "the part of the system where a mistake costs most (for example payments, authentication or the data model)"
   }
 }

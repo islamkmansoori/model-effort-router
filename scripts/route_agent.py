@@ -37,7 +37,8 @@ def decide(event: Dict[str, Any], cfg: Dict[str, Any], cwd: pathlib.Path,
         return {"_log": {**entry, "action": "kept (explicit)", "model": ti.get("model"), "effort": ti.get("effort")}}
     text = "\n\n".join(str(ti.get(k) or "") for k in ("description", "prompt"))
     repo = cwd if (cwd / ".git").exists() else None
-    r = router.score_text(text, cfg, repo=repo)
+    est = router.assess(text, cfg, repo) if hk.get("assess") else None
+    r = router.score_text(text, cfg, repo=repo, assessed=est)
     overrides = router.check_env(env)
     out: Dict[str, Any] = {"hookSpecificOutput": {
         "hookEventName": "PreToolUse",

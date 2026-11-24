@@ -1,3 +1,5 @@
 __pycache__/
 *.pyc
 .DS_Store
+bench/data/
+bench/.work/

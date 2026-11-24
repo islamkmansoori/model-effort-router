@@ -210,6 +210,44 @@ def main() -> int:
     ov = route_agent.decide(ev, CFG, pathlib.Path("/nonexistent"), env={"CLAUDE_CODE_EFFORT_LEVEL": "low"})
     check(bool(ov and ov["_log"]["overridden_by"]), "the log says when a setting overrides the choice", ov)
 
+    print("== the assessor")
+    calls: Dict[str, Any] = {}
+
+    class Done:
+        def __init__(self, out: Dict[str, Any]) -> None:
+            self.stdout = json.dumps(out)
+
+    def fake(cmd: Any, cwd: Any) -> Done:
+        calls["cmd"], calls["cwd"] = cmd, cwd
+        return Done({"structured_output": {"size": "L", "files": ["src/billing/invoice.py"], "risk": ["money", "bogus"],
+                                           "critical": True, "reason": "r"}, "total_cost_usd": 0.004})
+
+    est = router.assess("Fix totals", CFG, pathlib.Path("/repo"), runner=fake)
+    check(est["size"] == "L" and est["risk"] == ["money"] and est["cost_usd"] == 0.004,
+          "the assessor's answer is read; an unknown risk kind is dropped", est)
+    cmd = calls["cmd"]
+    check("--json-schema" in cmd and "--safe-mode" in cmd and cmd[cmd.index("--model") + 1] == "haiku"
+          and "Read,Glob,Grep" in cmd and calls["cwd"] == "/repo", "it asks a cheap model, read-only, in the repository", cmd)
+    router.assess("x", CFG, None, runner=fake)
+    check(calls["cmd"][calls["cmd"].index("--tools") + 1] == "" and calls["cwd"] is None, "without a repository it gets no tools")
+    check(router.assess("x", CFG, None, runner=lambda c, d: Done({"structured_output": {"size": "huge"}})) == {},
+          "a size outside the scale is no answer")
+    check(router.assess("x", CFG, None, runner=lambda c, d: Done({})) == {}, "no structured output is no answer")
+
+    def boom(c: Any, d: Any) -> Any:
+        raise OSError("no claude")
+
+    check(router.assess("x", CFG, None, runner=boom) == {}, "a missing claude is no answer, not an error")
+    r = router.score_text("Fix totals", CFG, assessed=est)
+    check("size L assessed (+4)" in r["reasons"] and not r["critical"] and r["risk"] == []
+          and any("assessor suggests risk money" in x for x in r["reasons"])
+          and any("assessor suggests the critical part" in x for x in r["reasons"]),
+          "the assessed size acts; its risk and critical guesses are only named", r)
+    r = router.score_text("**Size** S. Fix totals", CFG, assessed=est)
+    check("size S (+1)" in r["reasons"], "a size written in the task wins over the assessor", r)
+    fac = router.repo_facts(pathlib.Path("."), "Fix totals\nsrc/billing/invoice.py", CFG, files=files, churn={})
+    check(fac["touched"] == ["src/billing/invoice.py"], "files the assessor names are looked up in the repository", fac)
+
     print(f"\n{failures} failed")
     return 1 if failures else 0
 

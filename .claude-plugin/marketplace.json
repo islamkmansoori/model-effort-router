@@ -1,6 +1,9 @@
 {
   "name": "model-effort-router",
-  "owner": {"name": "Islam Mansoori"},
+  "description": "Choose the Claude model and effort for each task and subagent automatically, with a public benchmark.",
+  "owner": {
+    "name": "Islam Mansoori"
+  },
   "plugins": [
     {
       "name": "model-effort-router",

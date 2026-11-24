@@ -1,0 +1,13 @@
+{
+ "pytest-dev__pytest-7432": [
+  "testing/test_skipping.py::TestXFail::test_xfail_raises[TypeError-TypeError-*1",
+  "testing/test_skipping.py::TestXFail::test_xfail_raises[(AttributeError,",
+  "testing/test_skipping.py::TestXFail::test_xfail_raises[TypeError-IndexError-*1",
+  "testing/test_skipping.py::TestSkipif::test_skipif_reporting[\"hasattr(sys,",
+  "testing/test_skipping.py::TestSkipif::test_skipif_reporting[True,"
+ ],
+ "pytest-dev__pytest-5787": [
+  "testing/code/test_excinfo.py::TestFormattedExcinfo::test_exc_chain_repr_without_traceback[cause-The",
+  "testing/code/test_excinfo.py::TestFormattedExcinfo::test_exc_chain_repr_without_traceback[context-During"
+ ]
+}

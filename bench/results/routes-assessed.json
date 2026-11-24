@@ -1,0 +1,96 @@
+{
+ "pytest-dev__pytest-7432": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 0,
+  "reasons": [
+   "size XS assessed (+0)"
+  ],
+  "assess_cost_usd": 0.00340032,
+  "assessed": {
+   "size": "XS",
+   "files": [
+    "src/_pytest/skipping.py"
+   ],
+   "reason": "The `elif item.config.option.runxfail: pass` branch in pytest_runtest_makereport (skipping.py:273-274) short-circuits the elif chain, so the skip-location fix-up at lines 294-305 never runs when --runxfail is set; the fix is to stop that branch from swallowing the later skip case, which is a few-line change in one file."
+  }
+ },
+ "pytest-dev__pytest-7982": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 0,
+  "reasons": [
+   "size XS assessed (+0)"
+  ],
+  "assess_cost_usd": 0.0025503,
+  "assessed": {
+   "size": "XS",
+   "files": [
+    "src/_pytest/pathlib.py",
+    "testing/test_collection.py",
+    "changelog/7982.bugfix.rst"
+   ],
+   "reason": "The regression comes from one call at src/_pytest/pathlib.py:561, which uses `entry.is_dir(follow_symlinks=False)`; removing that argument restores following symlinked directories, plus a regression test and changelog entry."
+  }
+ },
+ "pytest-dev__pytest-7571": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 1,
+  "reasons": [
+   "size S assessed (+1)"
+  ],
+  "assess_cost_usd": 0.00323515,
+  "assessed": {
+   "size": "S",
+   "files": [
+    "src/_pytest/logging.py",
+    "testing/logging/test_fixture.py",
+    "changelog/"
+   ],
+   "reason": "The fix is a small change to caplog's level bookkeeping in src/_pytest/logging.py (save and restore the handler level) plus a regression test; no money, security, or stored-data risk. I only grepped the code, so the exact fix is unconfirmed."
+  }
+ },
+ "pytest-dev__pytest-5840": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 1,
+  "reasons": [
+   "size S assessed (+1)"
+  ],
+  "assess_cost_usd": 0.00363399,
+  "assessed": {
+   "size": "S",
+   "files": [
+    "src/_pytest/pathlib.py",
+    "src/_pytest/config/__init__.py",
+    "testing/test_conftest.py"
+   ],
+   "reason": "The likely cause is path normalization: src/_pytest/pathlib.py:346 applies normcase(realpath(...)), which lowercases the conftest path on Windows, so _importconftest (src/_pytest/config/__init__.py:434) derives the wrong module name and fails. The fix is probably small plus a regression test, but I only grepped and did not read the function bodies."
+  }
+ },
+ "pytest-dev__pytest-5787": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 2,
+  "reasons": [
+   "size M assessed (+2)"
+  ],
+  "assess_cost_usd": 0.00466415,
+  "assessed": {
+   "size": "M",
+   "files": [
+    "src/_pytest/reports.py",
+    "src/_pytest/_code/code.py",
+    "testing/test_reports.py",
+    "changelog/"
+   ],
+   "reason": "TestReport._to_json and _from_json in reports.py serialize only one ReprExceptionInfo, so the exception chain in ExceptionChainRepr is dropped when xdist sends the report; fixing it means serializing and rebuilding the whole chain, plus tests. This is based on reading the code only; nothing was run."
+  }
+ }
+}

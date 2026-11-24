@@ -1,0 +1,16 @@
+# Changelog
+
+## 0.3.0
+- Optional assessor: one cheap model call (Haiku, low effort, read-only, under a cent per task in our runs) estimates the size and the files likely to change when the task text does not say. Its risk and critical estimates are only named.
+- Public benchmark (`bench/`): SWE-bench Verified tasks run on every rung; the report compares fixed choices, climbing from the bottom, the router (rules only and with the assessor) and the cheapest rung that worked.
+- Plugin icon; marketplace description; CI on Linux, macOS and Windows; `llms.txt`; `AGENTS.md`.
+
+## 0.2.0
+- Inputs: GitHub issues (`--issue owner/repo#N` or URL), plain prompts (`--text`, `-` for standard input).
+- Repository facts (`--repo`): files the task names, files without tests, often-changed files.
+- Labels and configured paths for size, critical and risk.
+- `summary` suggests point changes from the outcome log.
+- PreToolUse hook: routes every subagent the Agent tool starts, automatically. Checked live: the subagent ran on the model the hook chose.
+
+## 0.1.0
+- Score a task file; explicit `**Critical:**` and `**Risk:**` lines; retries only for the worker's own failures; `check-env`; outcome log.

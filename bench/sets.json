@@ -1,0 +1,46 @@
+{
+ "_about": "Task sets: SWE-bench Verified instance ids. pilot: 5 pytest tasks across difficulty levels. full: every pure-Python task of pytest, pylint and flask that runs without Docker.",
+ "pilot": {
+  "ids": [
+   "pytest-dev__pytest-7432",
+   "pytest-dev__pytest-7982",
+   "pytest-dev__pytest-7571",
+   "pytest-dev__pytest-5840",
+   "pytest-dev__pytest-5787"
+  ]
+ },
+ "full": {
+  "ids": [
+   "pallets__flask-5014",
+   "pylint-dev__pylint-4551",
+   "pylint-dev__pylint-4604",
+   "pylint-dev__pylint-4661",
+   "pylint-dev__pylint-4970",
+   "pylint-dev__pylint-6386",
+   "pylint-dev__pylint-6528",
+   "pylint-dev__pylint-6903",
+   "pylint-dev__pylint-7080",
+   "pylint-dev__pylint-7277",
+   "pylint-dev__pylint-8898",
+   "pytest-dev__pytest-10051",
+   "pytest-dev__pytest-10081",
+   "pytest-dev__pytest-10356",
+   "pytest-dev__pytest-5262",
+   "pytest-dev__pytest-5631",
+   "pytest-dev__pytest-5787",
+   "pytest-dev__pytest-5809",
+   "pytest-dev__pytest-5840",
+   "pytest-dev__pytest-6197",
+   "pytest-dev__pytest-6202",
+   "pytest-dev__pytest-7205",
+   "pytest-dev__pytest-7236",
+   "pytest-dev__pytest-7324",
+   "pytest-dev__pytest-7432",
+   "pytest-dev__pytest-7490",
+   "pytest-dev__pytest-7521",
+   "pytest-dev__pytest-7571",
+   "pytest-dev__pytest-7982",
+   "pytest-dev__pytest-8399"
+  ]
+ }
+}

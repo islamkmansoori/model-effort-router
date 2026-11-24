@@ -44,7 +44,7 @@ DEFAULT_CONFIG = HERE.parent / "config" / "default.json"
 PROJECT_CONFIG = pathlib.Path(".claude") / "model-router.json"
 MARK = "**Model and effort (model-effort-router):**"
 CAUSES = ("worker", "environment", "task")
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 
 # Settings that make Claude Code run on something other than what the router chose (Claude Code docs, Nov 2026).
 OVERRIDES = {
@@ -202,8 +202,10 @@ def matches(paths: List[str], globs: List[str]) -> List[str]:
 # ---- the score -----------------------------------------------------------------------------------------------
 
 def score_text(text: str, cfg: Dict[str, Any], retry: int = 0, cause: str = "worker", labels: Optional[List[str]] = None,
-               repo: Optional[pathlib.Path] = None, facts: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+               repo: Optional[pathlib.Path] = None, facts: Optional[Dict[str, Any]] = None,
+               assessed: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     body = task_body(text, cfg)
+    assessed = assessed or {}
     neg = cfg["negation"]
     labels = [lb.lower() for lb in (labels or [])]
     lab = cfg["labels"]
@@ -220,9 +222,12 @@ def score_text(text: str, cfg: Dict[str, Any], retry: int = 0, cause: str = "wor
             if lm:
                 size = lm.group(1).upper()
                 break
+    size_note = ""
+    if size == "?" and assessed.get("size") in sz["points"]:
+        size, size_note = assessed["size"], " assessed"
     sp = sz["points"].get(size, sz["default"])
     points += sp
-    reasons.append(f"size {size} (+{sp})")
+    reasons.append(f"size {size}{size_note} (+{sp})")
 
     n = criteria_count(body, cfg)
     for at_least, pts in cfg["criteria"]["bands"]:
@@ -246,7 +251,8 @@ def score_text(text: str, cfg: Dict[str, Any], retry: int = 0, cause: str = "wor
             signals.append(sig["name"])
 
     if facts is None and repo is not None and cfg["repo"]["enabled"]:
-        facts = repo_facts(repo, body, cfg)
+        # files the assessor expects to change count as named by the task
+        facts = repo_facts(repo, body + "\n" + "\n".join(assessed.get("files", [])), cfg)
     facts = facts or {"touched": [], "untested": [], "churned": []}
     rc = cfg["repo"]
     nt = len(facts["touched"])
@@ -317,6 +323,10 @@ def score_text(text: str, cfg: Dict[str, Any], retry: int = 0, cause: str = "wor
         why = {"line": "", "label": " (critical label)", "paths": f" (touches {', '.join(crit_paths[:3])})",
                "guessed": f" (guessed: add **{crit_cfg['line']}:** yes or no)"}[critical_source]
         reasons.append("critical part changes: top of the ladder" + why)
+    if assessed.get("risk") and risk_source == "not set":
+        reasons.append(f"the assessor suggests risk {', '.join(assessed['risk'])} (add **{risk_cfg['line']}:** to act on it)")
+    if assessed.get("critical") and not critical:
+        reasons.append(f"the assessor suggests the critical part changes (add **{crit_cfg['line']}:** yes to act on it)")
     if risk_source == "not set" and risk_words:
         reasons.append(f"risk not set; the text mentions {', '.join(risk_words)} "
                        f"(add **{risk_cfg['line']}:**; a guess moves nothing)")
@@ -334,8 +344,58 @@ def score_text(text: str, cfg: Dict[str, Any], retry: int = 0, cause: str = "wor
 
 
 def score_task(task: Task, cfg: Dict[str, Any], retry: int = 0, cause: str = "worker",
-               repo: Optional[pathlib.Path] = None) -> Dict[str, Any]:
-    return score_text(task.text, cfg, retry, cause, task.labels, repo)
+               repo: Optional[pathlib.Path] = None, assessed: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    return score_text(task.text, cfg, retry, cause, task.labels, repo, assessed=assessed)
+
+
+# ---- the assessor (optional: one cheap model call) -----------------------------------------------------------
+
+ASSESS_PROMPT = """You estimate a software task before a developer starts it. Do not change anything.
+{look}
+Answer with:
+- size: XS (a line or two), S (one small change), M (a few functions or files), L (many files or a new feature),
+  XL (a large feature or redesign): how big the CODE CHANGE will be, not how long the description is.
+- files: the repository paths most likely to change (at most 8; empty if you cannot tell).
+- risk: any of {kinds} that the change touches ({meanings}); empty if none.
+- critical: true only if it changes {critical}.
+- reason: one sentence.
+
+<task>
+{task}
+</task>"""
+
+
+def assess(text: str, cfg: Dict[str, Any], repo: Optional[pathlib.Path] = None, runner: Any = None) -> Dict[str, Any]:
+    """Ask a cheap model (config `assess`) for the size, likely files, risk and critical estimate. Empty on failure."""
+    ac = cfg["assess"]
+    kinds = list(cfg["risk"]["kinds"])
+    schema = {"type": "object", "required": ["size", "files", "risk", "critical", "reason"], "properties": {
+        "size": {"type": "string", "enum": list(cfg["size"]["points"])},
+        "files": {"type": "array", "items": {"type": "string"}, "maxItems": 8},
+        "risk": {"type": "array", "items": {"type": "string", "enum": kinds}},
+        "critical": {"type": "boolean"}, "reason": {"type": "string"}}}
+    look = ("Look at the repository in the current folder (Glob, Grep, Read) only as much as you need."
+            if repo is not None and ac.get("read_repo", True) else "You cannot see the code; judge from the text.")
+    prompt = ASSESS_PROMPT.format(look=look, kinds=", ".join(kinds), critical=ac.get("critical_meaning", "the core of the system"),
+                                  meanings="; ".join(f"{k}: {v['meaning']}" for k, v in cfg["risk"]["kinds"].items()),
+                                  task=text[: ac.get("max_chars", 12000)])
+    tools = ["--allowedTools", "Read,Glob,Grep", "--max-turns", str(ac.get("max_turns", 8))] if "Glob" in look else \
+            ["--tools", "", "--max-turns", "2"]
+    cmd = [os.environ.get("CLAUDE_BIN") or "claude", "-p", prompt, "--model", ac["model"], "--effort", ac["effort"],
+           "--output-format", "json", "--no-session-persistence", "--max-budget-usd", str(ac["max_budget_usd"]),
+           "--json-schema", json.dumps(schema), "--safe-mode", "--strict-mcp-config", "--setting-sources", "",
+           "--permission-mode", "default", "--permission-prompts", "none", *tools]
+    try:
+        run = runner or (lambda c, d: subprocess.run(c, cwd=d, capture_output=True, text=True, timeout=ac.get("timeout", 180)))
+        out = json.loads(run(cmd, str(repo) if repo else None).stdout)
+        got = out.get("structured_output") or {}
+        if got.get("size") not in cfg["size"]["points"]:
+            return {}
+        got["risk"] = [k for k in got.get("risk", []) if k in kinds]
+        got["cost_usd"] = out.get("total_cost_usd")
+        return got
+    except (OSError, ValueError, subprocess.SubprocessError, AttributeError):
+        return {}
 
 
 def choice_line(r: Dict[str, Any]) -> str:
@@ -499,6 +559,7 @@ def main(argv: List[str]) -> int:
     s.add_argument("--issue", action="append", default=[], help="a GitHub issue: owner/repo#123 or its URL")
     s.add_argument("--text", action="append", default=[], help="a plain prompt")
     s.add_argument("--repo", type=pathlib.Path, help="add facts from this git repository (files, tests, changes)")
+    s.add_argument("--assess", action="store_true", help="ask a cheap model (config `assess`) to estimate size and files")
     s.add_argument("--write", action="store_true", help="put the choice line into each task file")
     s.add_argument("--retry", type=int, default=0, help="rungs earned by failing its own tests twice")
     s.add_argument("--cause", choices=CAUSES, help="with --retry: whose failure (only worker moves up)")
@@ -551,7 +612,10 @@ def main(argv: List[str]) -> int:
     if not tasks:
         ap.error("give a task file, --issue or --text")
     for t in tasks:
-        r = score_task(t, cfg, a.retry, a.cause or "worker", a.repo)
+        est = assess(t.text, cfg, a.repo) if a.assess else None
+        if a.assess and not est:
+            print(f"{t.name}: the assessor gave no answer; scoring without it", file=sys.stderr)
+        r = score_task(t, cfg, a.retry, a.cause or "worker", a.repo, assessed=est)
         if a.write and t.path is not None:
             write_choice(t.path, r)
         if a.json:

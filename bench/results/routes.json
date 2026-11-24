@@ -1,0 +1,47 @@
+{
+ "pytest-dev__pytest-7432": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 2,
+  "reasons": [
+   "size ? (+2)"
+  ]
+ },
+ "pytest-dev__pytest-7982": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 2,
+  "reasons": [
+   "size ? (+2)"
+  ]
+ },
+ "pytest-dev__pytest-7571": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 2,
+  "reasons": [
+   "size ? (+2)"
+  ]
+ },
+ "pytest-dev__pytest-5840": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 2,
+  "reasons": [
+   "size ? (+2)"
+  ]
+ },
+ "pytest-dev__pytest-5787": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "score": 2,
+  "reasons": [
+   "size ? (+2)"
+  ]
+ }
+}
