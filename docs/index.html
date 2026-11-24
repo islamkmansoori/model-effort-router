@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>model-effort-router: the right Claude model and effort for every task</title>
+<meta name="description" content="Claude Code plugin that chooses the Claude model (Sonnet or Opus) and reasoning effort for each task and subagent automatically, from the task, its labels and the repository, with a public SWE-bench Verified benchmark. MIT, no dependencies.">
+<meta name="keywords" content="Claude Code, Claude Code plugin, subagent model, reasoning effort, Sonnet vs Opus, LLM routing, model selection, cost optimization, SWE-bench">
+<link rel="canonical" href="https://islamkmansoori.github.io/model-effort-router/">
+<meta property="og:title" content="model-effort-router">
+<meta property="og:description" content="The right Claude model and effort for every task and subagent, automatically, with a public benchmark.">
+<meta property="og:image" content="https://raw.githubusercontent.com/islamkmansoori/model-effort-router/main/assets/social-preview.png">
+<meta property="og:url" content="https://islamkmansoori.github.io/model-effort-router/">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="https://raw.githubusercontent.com/islamkmansoori/model-effort-router/main/assets/icon.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareSourceCode",
+  "name": "model-effort-router",
+  "description": "Claude Code plugin that chooses the Claude model and reasoning effort for each task and subagent automatically, with a public SWE-bench Verified benchmark.",
+  "codeRepository": "https://github.com/islamkmansoori/model-effort-router",
+  "programmingLanguage": "Python",
+  "runtimePlatform": "Claude Code",
+  "license": "https://opensource.org/licenses/MIT",
+  "version": "0.3.0",
+  "author": {"@type": "Person", "name": "Islam Mansoori"},
+  "keywords": "Claude Code, plugin, subagents, model selection, reasoning effort, LLM routing, cost, SWE-bench"
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {"@type": "Question", "name": "Which Claude model should a Claude Code subagent use?",
+     "acceptedAnswer": {"@type": "Answer", "text": "It depends on the task. model-effort-router reads the task, its labels and the repository and chooses Sonnet or Opus and an effort level; its SWE-bench benchmark shows the cheaper model solves easy tasks for a fraction of the cost while harder ones need Opus."}},
+    {"@type": "Question", "name": "How do I set the model and effort of a Claude Code subagent?",
+     "acceptedAnswer": {"@type": "Answer", "text": "Per call with the Agent tool's model and effort parameters, per subagent with model: and effort: in its frontmatter, or per session with claude --model opus --effort high. The model-effort-router hook fills the Agent tool's parameters automatically."}},
+    {"@type": "Question", "name": "Why does my Claude Code subagent ignore the effort I set?",
+     "acceptedAnswer": {"@type": "Answer", "text": "The CLAUDE_CODE_EFFORT_LEVEL environment variable overrides every other effort setting, including the Agent tool's effort and a subagent's effort: field. CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1 makes subagents ignore the model they are given. router.py check-env names both."}},
+    {"@type": "Question", "name": "Is climbing from the cheapest model up the cheapest strategy?",
+     "acceptedAnswer": {"@type": "Answer", "text": "Not always, because failed attempts are paid for too. The benchmark compares always using one rung, climbing from the bottom, jumping to the next model on failure, the router, and the cheapest rung that would have worked in hindsight."}}
+  ]
+}
+</script>
+<style>
+:root { --bg: #ffffff; --fg: #1b1f27; --muted: #5b6478; --line: #e3e6ee; --accent: #3b82f6; --code: #f4f6fa; }
+@media (prefers-color-scheme: dark) { :root { --bg: #181c26; --fg: #e8ebf2; --muted: #9aa3b8; --line: #2c3242; --accent: #60a5fa; --code: #222838; } }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 860px; margin: 0 auto; padding: 32px 16px 64px; }
+h1 { font-size: 2.1rem; margin: 0 0 8px; } h2 { margin-top: 40px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+p.lead { font-size: 1.2rem; color: var(--muted); margin-top: 0; }
+a { color: var(--accent); } code, pre { background: var(--code); border-radius: 6px; } code { padding: 1px 5px; }
+pre { padding: 12px 14px; overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: .95rem; display: block; overflow-x: auto; }
+th, td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; white-space: nowrap; }
+.btn { display: inline-block; padding: 8px 14px; border: 1px solid var(--accent); border-radius: 8px; text-decoration: none; margin: 4px 8px 4px 0; }
+</style>
+</head>
+<body>
+<main>
+<h1>model-effort-router</h1>
+<p class="lead">Pick the right Claude model and effort for every task and subagent, automatically, and check the rules on real tasks.</p>
+<p><a class="btn" href="https://github.com/islamkmansoori/model-effort-router">GitHub repository</a><a class="btn" href="https://github.com/islamkmansoori/model-effort-router/blob/main/bench/results/REPORT.md">Benchmark report</a></p>
+
+<p>A Claude Code plugin. Before a subagent or worker starts, it reads the task (a story, a GitHub issue or a plain prompt), the labels people put on it and the repository it touches, and chooses <strong>Sonnet or Opus</strong> and an <strong>effort level</strong>. Every choice comes with its reasons. Guessed risk never raises the bill; only explicit lines, labels and configured paths do. A stronger model is tried only when the worker itself failed. Standard-library Python 3.9+, MIT, no dependencies.</p>
+
+<h2>Install</h2>
+<pre><code>/plugin marketplace add islamkmansoori/model-effort-router
+/plugin install model-effort-router@model-effort-router</code></pre>
+<p>Subagents are then routed automatically by a hook. To route a task by hand: <code>/route-task &lt;file | owner/repo#123 | "prompt"&gt;</code>.</p>
+
+<h2>Benchmark results</h2>
+<!-- results:start -->
+<p>15 SWE-bench Verified tasks, each run once on every rung with Claude Code in headless mode (<code>--bare</code> or <code>--safe-mode</code>: no user customizations; per-run budget cap). Solved = every hidden test passes. Cost = Claude Code&#x27;s own <code>total_cost_usd</code> estimate. One run per task and rung: small numbers, read them as a pilot.</p>
+<table><tr><th>Way of choosing</th><th>Tasks solved</th><th>Total cost</th><th>Cost per solved task</th></tr><tr><td>Always sonnet medium</td><td>8/15</td><td>$1.22</td><td>$0.15</td></tr><tr><td>Always sonnet high</td><td>9/15</td><td>$1.32</td><td>$0.15</td></tr><tr><td>Always opus high</td><td>14/15</td><td>$3.43</td><td>$0.25</td></tr><tr><td>Always opus xhigh</td><td>14/15</td><td>$4.22</td><td>$0.30</td></tr><tr><td>Start at the bottom, climb on failure</td><td>14/15</td><td>$3.99</td><td>$0.28</td></tr><tr><td>Start at the bottom, jump to the next model on failure</td><td>14/15</td><td>$3.61</td><td>$0.26</td></tr><tr><td>Router (rules only)</td><td>8/15</td><td>$1.22</td><td>$0.15</td></tr><tr><td>Router (rules only), climb on failure</td><td>14/15</td><td>$3.99</td><td>$0.28</td></tr><tr><td>Router (with assessor)</td><td>8/15</td><td>$1.27</td><td>$0.16</td></tr><tr><td>Router (with assessor), climb on failure</td><td>14/15</td><td>$4.04</td><td>$0.29</td></tr><tr><td>Cheapest rung that worked (hindsight)</td><td>14/15</td><td>$2.30</td><td>$0.16</td></tr></table>
+<p>Router costs include the assessor&#x27;s own model call. Climb on failure = if the chosen rung fails, run the next one up, paying for every attempt.</p>
+<p><strong>Tuned on one half, tested on the other.</strong></p>
+<p>The 15 tasks are split in a fixed way (every other task by id). 20 starting rules and climbing styles were tried on the tuning half only; the best is scored here on the test half, which it never saw. Chosen: router with the assessor, thresholds [[1, 2], [0, 1]] (points to rung), climb one rung on failure.</p>
+<table><tr><th>Way of choosing (test half)</th><th>Tasks solved</th><th>Total cost</th><th>Cost per solved task</th></tr><tr><td>Always sonnet medium</td><td>5/7</td><td>$0.48</td><td>$0.10</td></tr><tr><td>Always sonnet high</td><td>5/7</td><td>$0.54</td><td>$0.11</td></tr><tr><td>Always opus high</td><td>7/7</td><td>$1.33</td><td>$0.19</td></tr><tr><td>Always opus xhigh</td><td>7/7</td><td>$1.71</td><td>$0.24</td></tr><tr><td>Start at the bottom, climb on failure</td><td>7/7</td><td>$1.15</td><td>$0.16</td></tr><tr><td>Start at the bottom, jump to the next model on failure</td><td>7/7</td><td>$0.99</td><td>$0.14</td></tr><tr><td>Router (default rules)</td><td>5/7</td><td>$0.48</td><td>$0.10</td></tr><tr><td>Router (default rules), climb on failure</td><td>7/7</td><td>$1.15</td><td>$0.16</td></tr><tr><td>Cheapest rung that worked (hindsight)</td><td>7/7</td><td>$0.87</td><td>$0.12</td></tr><tr><td><strong>Tuned router (chosen on the other half)</strong></td><td>7/7</td><td>$1.15</td><td>$0.16</td></tr></table>
+<p>Per task, with every run&#x27;s cost: <a href="https://github.com/islamkmansoori/model-effort-router/blob/main/bench/results/REPORT.md">bench/results/REPORT.md</a>.</p>
+<!-- results:end -->
+
+<h2>How it decides</h2>
+<table>
+<tr><th>What the task says</th><th>Model and effort</th></tr>
+<tr><td><code>**Critical:** yes</code>, a <code>critical</code> label, or a configured critical path</td><td>opus, xhigh</td></tr>
+<tr><td><code>**Risk:** money</code>, <code>security</code> or <code>data</code>, a mapped label, or a configured risk path</td><td>at least opus, high</td></tr>
+<tr><td>9 points or more</td><td>opus, high</td></tr>
+<tr><td>6 to 8 points</td><td>sonnet, high</td></tr>
+<tr><td>5 points or less</td><td>sonnet, medium</td></tr>
+</table>
+<p>Points come from size, acceptance criteria, dependencies, signals in the text (schema, permissions, UI, open questions, shared files, concurrency), and the repository (touched files, untested code, often-changed files). An optional assessor (one Haiku call, under a cent) estimates the size of vague tasks.</p>
+
+<h2>Questions</h2>
+<h3>Which Claude model should a Claude Code subagent use?</h3>
+<p>It depends on the task. The benchmark shows the cheaper model solves easy tasks for a fraction of the cost while harder ones need Opus; the router chooses per task.</p>
+<h3>How do I set the model and effort of a subagent?</h3>
+<p>Per call with the Agent tool's <code>model</code> and <code>effort</code>, per subagent with <code>model:</code> and <code>effort:</code> in its frontmatter, or per session with <code>claude --model opus --effort high</code>. This plugin's hook fills the Agent tool's parameters for you.</p>
+<h3>Why does my subagent ignore the effort I set?</h3>
+<p><code>CLAUDE_CODE_EFFORT_LEVEL</code> overrides every other effort setting. <code>CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1</code> makes subagents ignore the model they are given. <code>router.py check-env</code> names both.</p>
+<h3>Is climbing from the cheapest model up the cheapest strategy?</h3>
+<p>Not always: failed attempts are paid for too. The benchmark compares the options, including the cheapest rung that would have worked in hindsight.</p>
+
+<p style="margin-top:48px;color:var(--muted)">MIT licence. <a href="https://github.com/islamkmansoori/model-effort-router/blob/main/CITATION.cff">Cite</a> · <a href="https://github.com/islamkmansoori/model-effort-router/blob/main/llms.txt">llms.txt</a></p>
+</main>
+</body>
+</html>

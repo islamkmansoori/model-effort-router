@@ -464,6 +464,32 @@ def tune() -> int:
     return 0
 
 
+def md_to_html(lines: List[str]) -> str:
+    """The few Markdown forms the report uses (paragraphs, tables, **bold**, `code`, links) as HTML."""
+    import html as h
+
+    def inline(s: str) -> str:
+        s = h.escape(s)
+        s = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", s)
+        s = re.sub(r"`(.+?)`", r"<code>\1</code>", s)
+        return re.sub(r"\[(.+?)\]\((.+?)\)", lambda m: f'<a href="https://github.com/islamkmansoori/model-effort-router/blob/main/{m.group(2)}">{m.group(1)}</a>', s)
+
+    out: List[str] = []
+    table: List[List[str]] = []
+    for ln in lines + [""]:
+        if ln.startswith("|"):
+            if not re.match(r"^\|[-|]+\|$", ln):
+                table.append([c.strip() for c in ln.strip().strip("|").split("|")])
+            continue
+        if table:
+            out.append("<table>" + "".join(("<tr>" + "".join(f"<{'th' if i == 0 else 'td'}>{inline(c)}</{'th' if i == 0 else 'td'}>" for c in row) + "</tr>")
+                                           for i, row in enumerate(table)) + "</table>")
+            table = []
+        if ln.strip():
+            out.append(f"<p>{inline(ln)}</p>")
+    return "\n".join(out)
+
+
 def report() -> int:
     runs = done_runs()
     routes: Dict[str, Dict[str, Dict[str, Any]]] = {}
@@ -531,6 +557,12 @@ def report() -> int:
         if a in text and b in text:
             text = text[: text.index(a) + len(a)] + "\n" + "\n".join(block).strip() + "\n" + text[text.index(b):]
             readme.write_text(text, encoding="utf-8")
+        page = HERE.parent / "docs" / "index.html"
+        if page.exists():
+            html = page.read_text(encoding="utf-8")
+            if a in html and b in html:
+                html = html[: html.index(a) + len(a)] + "\n" + md_to_html(block) + "\n" + html[html.index(b):]
+                page.write_text(html, encoding="utf-8")
     (RESULTS / "report.json").write_text(json.dumps({"tasks": ids, "strategies": st}, indent=1), encoding="utf-8")
     print("\n".join(lines))
     return 0

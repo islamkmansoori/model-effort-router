@@ -227,7 +227,7 @@ def main() -> int:
           "the assessor's answer is read; an unknown risk kind is dropped", est)
     cmd = calls["cmd"]
     check("--json-schema" in cmd and "--safe-mode" in cmd and cmd[cmd.index("--model") + 1] == "haiku"
-          and "Read,Glob,Grep" in cmd and calls["cwd"] == "/repo", "it asks a cheap model, read-only, in the repository", cmd)
+          and "Read,Glob,Grep" in cmd and calls["cwd"] == str(pathlib.Path("/repo")), "it asks a cheap model, read-only, in the repository", cmd)
     router.assess("x", CFG, None, runner=fake)
     check(calls["cmd"][calls["cmd"].index("--tools") + 1] == "" and calls["cwd"] is None, "without a repository it gets no tools")
     check(router.assess("x", CFG, None, runner=lambda c, d: Done({"structured_output": {"size": "huge"}})) == {},
