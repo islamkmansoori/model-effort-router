@@ -18,7 +18,7 @@
 | Keyword tiers (top tier starts on Opus), jump on failure | 20/21 | $4.21 | $0.21 |
 | Cheapest rung that worked (hindsight) | 20/21 | $2.70 | $0.13 |
 
-Router costs include the assessor's own model call. Climb on failure = if the chosen rung fails, run the next one up, paying for every attempt; jump = go straight to the next model. Keyword tiers is a four-tier keyword scorer from an earlier project (`bench/keyword_tiers.py`).
+Router costs include the assessor's own model call. Climb on failure = if the chosen rung fails, run the next one up, paying for every attempt; jump = go straight to the next model. Keyword tiers is a the four-tier keyword scorer of Lymbix, an earlier project by the same author (`bench/keyword_tiers.py`).
 
 ## Each task
 

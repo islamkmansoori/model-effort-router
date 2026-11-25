@@ -48,7 +48,7 @@ DEFAULT_CONFIG = HERE.parent / "config" / "default.json"
 PROJECT_CONFIG = pathlib.Path(".claude") / "model-router.json"
 MARK = "**Model and effort (model-effort-router):**"
 CAUSES = ("worker", "environment", "task")   # --cause; "unknown" and "repeat" are set by --failure-log
-VERSION = "0.5.0"
+VERSION = "0.6.0"
 
 # Settings that make Claude Code run on something other than what the router chose (Claude Code docs, Nov 2026).
 OVERRIDES = {

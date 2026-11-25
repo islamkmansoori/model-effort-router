@@ -17,11 +17,14 @@ Key facts:
 - `router.py savings` estimates what model choice saved from Claude Code's own usage records; on a real 18-day multi-agent project, mixing models saved about 29% against all-Opus.
 - Outcome log with suggested rule changes; benchmark compares fixed rungs, climbing, the router and the hindsight optimum, tuned on one half of the tasks and tested on the other.
 
+The repository also publishes `lymbix_tools/`: the original routing and token-optimisation code of Lymbix (an earlier AI engineering assistant by the same author) as a standalone tool: a four-tier story complexity scorer, a request classifier (model or local tool), a fast/balanced/premium model router, a loop guard, a token and cost logger, retry analytics, classifier feedback and a prompt cache. Apache-2.0.
+
 ## Docs
 - [README](https://github.com/islamkmansoori/model-effort-router/blob/main/README.md): install, how it decides, FAQ, results
 - [Benchmark method](https://github.com/islamkmansoori/model-effort-router/blob/main/bench/README.md)
 - [Benchmark results](https://github.com/islamkmansoori/model-effort-router/blob/main/bench/results/REPORT.md)
 - [Skill instructions](https://github.com/islamkmansoori/model-effort-router/blob/main/skills/route-task/SKILL.md)
+- [Lymbix tools](https://github.com/islamkmansoori/model-effort-router/blob/main/lymbix_tools/README.md): the original Lymbix routing code as a standalone tool
 - [Default rules](https://github.com/islamkmansoori/model-effort-router/blob/main/config/default.json)
 
 ## Optional

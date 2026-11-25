@@ -13,4 +13,5 @@ For AI coding agents and people changing this repository.
 - **Test before you finish.** `python3 -I tests/test_router.py` must print `0 failed`. CI runs it on Linux, macOS and Windows with Python 3.9, 3.12 and 3.13.
 - **Validate the plugin.** `claude plugin validate . --strict` must pass.
 - **The benchmark costs money or plan usage.** `bench/run.py validate` and `route` (without `--assess`) are free; `run` and `route --assess` call Claude. Never start a paid run without a `--total-budget`.
+- **`lymbix_tools/` is original Lymbix code under Apache-2.0.** Keep it as it is: no refactoring, no reformatting. A change to a copied module needs a line at the top of that file saying what changed and when, and a line in `lymbix_tools/README.md`. New code for it goes in `cli.py` or `config.py`. `python3 -I tests/test_lymbix_tools.py` must print `0 failed`.
 - **Versions.** Bump `version` in `.claude-plugin/plugin.json` and `VERSION` in `scripts/router.py` together, and add a `CHANGELOG.md` entry.

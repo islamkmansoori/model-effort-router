@@ -19,6 +19,7 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: python -I tests/test_router.py
+      - run: python -I tests/test_lymbix_tools.py
       - run: python -m json.tool config/default.json
       - run: python -m json.tool .claude-plugin/plugin.json
       - run: python -m json.tool .claude-plugin/marketplace.json

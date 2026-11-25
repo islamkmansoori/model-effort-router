@@ -1,8 +1,9 @@
 """A keyword-tier scorer, kept here as a baseline to compare against.
 
-This is the rule engine of an earlier story-routing project by the same author: words such as "button", "form"
-and "list" pull a task down, words such as "architecture", "algorithm", "kubernetes" and "concurrent" push it
-up, and the total lands in one of four tiers. It was written for user stories and tuned by feel. The benchmark
+This is the rule engine of Lymbix, an earlier project by the same author (the original is in
+lymbix_tools/complexity_scorer.py, and a test keeps the two identical): words such as "button", "form" and "list"
+pull a task down, words such as "architecture", "algorithm", "kubernetes" and "concurrent" push it up, and the
+total lands in one of four tiers. It was written for user stories and tuned by feel. The benchmark
 asks the question it never faced: do its tiers predict which tasks need the stronger model?
 
 On the 21 SWE-bench Verified tasks here they do not, reliably: starting its top tier on Opus costs more than
