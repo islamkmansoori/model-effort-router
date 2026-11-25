@@ -4,6 +4,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import os
 import pathlib
 import sys
 import tempfile
@@ -47,10 +48,16 @@ def main() -> int:
     check(r["score"] == 1, "a sentence that denies a signal adds nothing", r)
 
     print("== critical")
-    r = router.score_text(task("S", 1, "It rewrites the ledger posting."), CFG)
-    check(r["critical"] and r["critical_source"] == "guessed" and pick(task("S", 1, "It rewrites the ledger posting.")) == ("opus", "xhigh")
-          and "guessed" in "; ".join(r["reasons"]), "no line: guessed from the text, top rung, says guessed", r)
-    check(not router.score_text(task("S", 1, "The ledger is not touched."), CFG)["critical"], "a denial is not a guess")
+    ledger = task("S", 1, "It rewrites the ledger posting.")
+    r = router.score_text(ledger, CFG)
+    check(not r["critical"] and r["critical_guess"] and r["model"] == "sonnet"
+          and any("may touch the critical part" in x for x in r["reasons"]),
+          "no line: words are only named, the choice does not move", r)
+    acts = dict(CFG, critical=dict(CFG["critical"], guess_acts=True))
+    r = router.score_text(ledger, acts)
+    check(r["critical"] and r["critical_source"] == "guessed" and (r["model"], r["effort"]) == ("opus", "xhigh"),
+          "with guess_acts on, a guess is the top rung", r)
+    check(not router.score_text(task("S", 1, "The ledger is not touched."), CFG)["critical_guess"], "a denial is not a guess")
     check(pick(task("S", 1, "It rewrites the ledger posting.", "**Critical:** no\n")) == ("sonnet", "medium"), "Critical: no wins over the words")
     check(pick(task("S", 1, head="**Critical:** yes\n")) == ("opus", "xhigh"), "Critical: yes is the top rung")
 
@@ -69,8 +76,10 @@ def main() -> int:
     one = dict(CFG, retry_jumps_model=False)
     check([router.score_text(t, one, retry=n, cause="worker")["effort"] for n in range(3)] == ["medium", "high", "high"]
           and router.score_text(t, one, retry=1, cause="worker")["model"] == "sonnet", "with the jump off, one rung at a time")
-    check(pick(t, retry=2, cause="environment") == ("sonnet", "medium") and pick(t, retry=2, cause="task") == ("sonnet", "medium"),
-          "environment or task failures move nothing")
+    check(pick(t, retry=1, cause="environment") == ("sonnet", "medium") and pick(t, retry=1, cause="task") == ("sonnet", "medium"),
+          "an environment or task failure earns no step")
+    check(pick(t, retry=2, cause="environment") == pick(t, retry=1, cause="worker") == ("opus", "high"),
+          "a later environment failure keeps the step an earlier worker failure earned")
     tmp = pathlib.Path(tempfile.mkdtemp())
     f = tmp / "t.md"
     f.write_text(t, encoding="utf-8")
@@ -288,6 +297,174 @@ def main() -> int:
           "sessions can be kept by what they mention, or left out by id")
     rep = "\n".join(router.savings_report(sv))
     check("Subagents:** $0.01 against $0.02" in rep and "claude-unknown-9" in rep, "the report states both totals", rep)
+
+    print("== readiness (advice before starting)")
+    vague = "# T\n\n**Acceptance criteria**\n1. The page works correctly.\n2. Given a valid code, then the total shows the discounted price.\n3. Loads properly\n"
+    rd = router.readiness(vague, CFG)
+    check(any("2 of 3 criteria are vague (correctly, properly)" in x for x in rd) and any("2 of 3 criteria are under 5 words" in x for x in rd),
+          "vague and too-short criteria are named", rd)
+    check(router.readiness("# T\n\n**Acceptance criteria**\n1. Given a valid code, then the total shows the discounted price.\n", CFG) == [],
+          "a clear criterion raises nothing")
+    check(router.readiness("word " * 130, CFG) == ["no acceptance criteria: nothing to check the result against"]
+          and router.readiness("Fix the typo in the README", CFG) == [], "a long task with no criteria is flagged; a short prompt is not")
+    check(any("open question" in x for x in router.readiness("Do it. Open question: which provider?", CFG))
+          and router.readiness("Do it. There is no open question.", CFG) == [], "an open question is flagged, a denied one is not")
+    r = router.score_text(vague, CFG)
+    check(not r["ready"] and r["model"] == "sonnet" and "Before starting:" in router.choice_line(r),
+          "readiness is advice: it is reported and written, and does not change the model", r)
+    check(router.readiness(vague, dict(CFG, readiness=dict(CFG["readiness"], enabled=False))) == [], "readiness can be switched off")
+
+    print("== retry limit, unknown and repeated failures")
+    t0 = task("S", 1)
+    r = router.score_text(t0, CFG, retry=3, cause="worker")
+    check(r["stop"] and (r["model"], r["effort"]) == ("opus", "xhigh") and any("retry limit (2) reached" in x for x in r["reasons"]),
+          "past the retry limit it stops climbing and says to ask a person", r)
+    check(not router.score_text(t0, CFG, retry=2, cause="worker")["stop"], "at the limit it does not stop yet")
+    r = router.score_text(t0, CFG, retry=2, cause="repeat")
+    check((r["model"], r["effort"]) == ("opus", "high") and any("same failure on two different models" in x for x in r["reasons"]),
+          "the same failure on two models earns no further step and keeps the one already earned", r)
+    check(router.score_text(t0, CFG, retry=1, cause="unknown")["model"] == "sonnet", "an unknown cause earns no step")
+    check(router.score_text(t0, dict(CFG, max_worker_retries=0), retry=3, cause="worker")["stop"] is False, "a limit of 0 means no limit")
+
+    print("== whose failure was it")
+    env_log = "collected 3 items\nE   ModuleNotFoundError: No module named 'requests'\n1 failed in 0.2s\n"
+    sc = router.suggest_cause(env_log, CFG)
+    check(sc["cause"] == "environment" and sc["counts"]["worker"] == 1 and "ModuleNotFoundError" in sc["evidence"][0],
+          "environment evidence wins over a failed test", sc)
+    check(router.suggest_cause("OSError: [Errno 28] No space left on device", CFG)["cause"] == "environment", "a full disk is the environment")
+    check(router.suggest_cause("I stopped: the story is ambiguous about the fee.", CFG)["cause"] == "task", "an ambiguous task is the task")
+    w_log = "FAILED tests/test_x.py::test_total - AssertionError: assert 90 == 100\n1 failed, 3 passed in 0.31s\n"
+    check(router.suggest_cause(w_log, CFG)["cause"] == "worker", "a plain assertion failure is the worker")
+    check(router.suggest_cause("all good here", CFG) == {"cause": "unknown", "counts": {"environment": 0, "task": 0, "worker": 0}, "evidence": []},
+          "nothing recognised is unknown")
+    fp1 = router.failure_fingerprint(w_log)
+    fp2 = router.failure_fingerprint("FAILED /tmp/run-77/tests/test_x.py::test_total - AssertionError: assert 90 == 100\n1 failed, 5 passed in 2.07s\n")
+    fp3 = router.failure_fingerprint("FAILED tests/test_y.py::test_other - KeyError: 'fee'\n")
+    check(fp1 == fp2 and fp1 != fp3, "two runs that fail the same way share a fingerprint; a different failure does not", (fp1, fp2, fp3))
+    st = pathlib.Path(tempfile.mkdtemp(prefix="state-")) / "sub" / "state.json"
+    a1 = router.note_failure(st, "t.md", fp1, "sonnet")
+    a2 = router.note_failure(st, "t.md", fp1, "sonnet")
+    a3 = router.note_failure(st, "t.md", fp1, "opus")
+    a4 = router.note_failure(st, "other.md", fp1, "opus")
+    check(not a1["seen_before"] and a2["seen_before"] and a2["other_models"] == [] and a3["other_models"] == ["sonnet"]
+          and not a4["seen_before"], "failures are remembered per task, with the models they were seen on", (a1, a2, a3, a4))
+
+    work = pathlib.Path(tempfile.mkdtemp(prefix="flow-"))
+    cfile, tfile, lfile = work / "cfg.json", work / "t.md", work / "fail.txt"
+    cfile.write_text(json.dumps({"state": str(work / "state.json")}), encoding="utf-8")
+    tfile.write_text(task("S", 1), encoding="utf-8")
+    lfile.write_text(w_log, encoding="utf-8")
+
+    def run(*args: str) -> Dict[str, Any]:
+        with contextlib.redirect_stdout(io.StringIO()) as buf:
+            router.main(["--config", str(cfile), "score", str(tfile), "--json", *args])
+        parsed: Dict[str, Any] = json.loads(buf.getvalue())
+        return parsed
+
+    j1 = run("--retry", "1", "--failure-log", str(lfile))
+    check(j1["model"] == "opus" and any("cause suggested from the failure log: worker" in x for x in j1["reasons"]),
+          "with a failure log and no --cause, a worker failure climbs", j1)
+    j2 = run("--retry", "2", "--failure-log", str(lfile))
+    check((j2["model"], j2["effort"]) == ("opus", "high") and any("already seen on sonnet" in x for x in j2["reasons"]),
+          "the same log after the jump: it stays on opus high and says where it was seen", j2)
+    lfile.write_text(env_log, encoding="utf-8")
+    j3 = run("--retry", "1", "--failure-log", str(lfile))
+    check(j3["model"] == "sonnet" and any("environment" in x for x in j3["reasons"]), "an environment log does not climb", j3)
+    j4 = run("--retry", "1", "--failure-log", str(lfile), "--cause", "worker")
+    check(j4["model"] == "opus", "an explicit --cause wins over the suggestion", j4)
+
+    print("== mechanical tasks (off by default)")
+    mech_on = dict(CFG, mechanical=dict(CFG["mechanical"], enabled=True))
+    check(not router.score_text("Run the tests and report the result", CFG)["mechanical"], "off by default")
+    r = router.score_text("Run the tests and report the result", mech_on)
+    check(r["mechanical"] and (r["model"], r["effort"]) == ("haiku", "low"), "a task that only runs a tool goes to the cheapest rung", r)
+    check(not router.score_text("Run the tests and fix the failures", mech_on)["mechanical"], "not when it asks for a change")
+    check(not router.score_text("Run the tests. **Risk:** money", mech_on)["mechanical"]
+          and not router.score_text("Run the tests", mech_on, retry=1, cause="worker")["mechanical"], "not when risky, and not on a retry")
+
+    print("== budget")
+    big = task("XL", 10, "A new page with a migration.")
+    check(router.score_text(big, CFG)["model"] == "opus" and router.score_text(big, CFG, cap=0, cap_reason="daily budget 90% used")["model"] == "sonnet",
+          "a cap lowers the first attempt of an ordinary task")
+    check(router.score_text(big + "**Risk:** money", CFG, cap=0)["model"] == "opus"
+          and router.score_text(big, CFG, cap=0, retry=1, cause="worker")["model"] == "opus", "risky tasks and retries are not capped")
+    day = __import__("datetime").date(2026, 11, 25)
+    use = {"input_tokens": 1000000, "output_tokens": 0}
+    recs2 = [{"model": "claude-opus-5-5", "usage": use, "day": "2026-11-25"}, {"model": "claude-opus-5-5", "usage": use, "day": "2026-11-20"},
+             {"model": "claude-opus-5-5", "usage": use, "day": "2026-11-02"}, {"model": "claude-opus-5-5", "usage": use, "day": "2026-10-30"}]
+    bcfg = dict(CFG, budget=dict(CFG["budget"], daily=5, weekly=8, monthly=100))
+    bs = router.budget_status([], bcfg, today=day, records=recs2)
+    per = bs["periods"]
+    check(per["daily"]["spent"] == 4.0 and per["daily"]["level"] == "over 75%" and per["weekly"]["spent"] == 8.0
+          and per["weekly"]["level"] == "EXCEEDED" and per["monthly"]["spent"] == 12.0 and per["monthly"]["level"] == "ok" and bs["exceeded"],
+          "spend per day, week and month against the limits, with alert levels", bs)
+    rep_txt = "\n".join(router.budget_report(bs))
+    check("Today: $4.00 of $5.00 (80%): over 75%" in rep_txt and "Last 7 days: $8.00 of $8.00 (100%): EXCEEDED" in rep_txt, "the budget report", rep_txt)
+    check("no limit set" in "\n".join(router.budget_report(router.budget_status([], CFG, today=day, records=recs2))), "no limits: it says how to set them")
+    bdir = pathlib.Path(tempfile.mkdtemp(prefix="budget-"))
+    (bdir / ".claude").mkdir()
+    now = 1795000000.0
+    today_s = __import__("datetime").date.fromtimestamp(now).isoformat()
+    (bdir / ".claude" / "model-router-budget.json").write_text(json.dumps({"day": today_s, "spent": 4.5, "at": now - 60}), encoding="utf-8")
+    tcfg = dict(CFG, budget=dict(CFG["budget"], daily=5, throttle=True))
+    cap = router.budget_cap(bdir, tcfg, now=now, folders=[bdir / "none"])
+    check(cap is not None and cap["rung"] == 0 and "daily budget 90% used" in cap["reason"], "past the throttle point the hook caps ordinary tasks", cap)
+    check(router.budget_cap(bdir, dict(CFG, budget=dict(CFG["budget"], daily=50, throttle=True)), now=now, folders=[bdir / "none"]) is None
+          and router.budget_cap(bdir, dict(CFG, budget=dict(CFG["budget"], daily=5)), now=now) is None, "below the throttle point, or with throttle off, there is no cap")
+    empty = pathlib.Path(tempfile.mkdtemp(prefix="budget2-"))
+    check(router.budget_cap(empty, tcfg, now=now, folders=[empty / "none"]) is None and (empty / ".claude" / "model-router-budget.json").exists(),
+          "with no cache it reads today's usage and writes the cache")
+    hev: Dict[str, Any] = {"tool_name": "Agent", "session_id": "s", "tool_input": {"subagent_type": "general-purpose", "description": "d", "prompt": big}}
+    orig_cap = router.budget_cap
+    router.budget_cap = lambda cwd, cfg, now=None, folders=None: {"rung": 0, "reason": "daily budget 90% used: capped"}
+    try:
+        hans = route_agent.decide(hev, CFG, pathlib.Path("/nonexistent"), env={})
+    finally:
+        router.budget_cap = orig_cap
+    check((hans or {})["hookSpecificOutput"]["updatedInput"]["model"] == "sonnet" and any("budget" in x for x in (hans or {})["_log"]["reasons"]),
+          "the hook applies the budget cap and logs it", hans)
+
+    print("== audit of the hook log")
+    alog = pathlib.Path(tempfile.mkdtemp(prefix="audit-")) / "runs.jsonl"
+    check(len(router.audit(alog)) == 1 and "No hook log" in router.audit(alog)[0], "no log: it says the hook has not routed anything here")
+    alog.write_text("\n".join(json.dumps(x) for x in [
+        {"time": "2026-11-25T10:00:00", "agent_type": "general-purpose", "action": "routed", "model": "sonnet", "effort": "medium", "reasons": [], "overridden_by": []},
+        {"time": "2026-11-25T11:00:00", "agent_type": "general-purpose", "action": "routed", "model": "opus", "effort": "high", "reasons": ["daily budget 90% used"], "overridden_by": ["CLAUDE_CODE_EFFORT_LEVEL=low: x"]},
+        {"time": "2026-11-26T09:00:00", "agent_type": "Plan", "action": "kept (explicit)", "model": "haiku", "effort": None},
+        {"time": "2026-11-26T09:30:00", "agent_type": "Explore", "action": "skipped (agent type)"}]) + "\nnot json\n", encoding="utf-8")
+    au = "\n".join(router.audit(alog))
+    check("4 subagent starts seen by the hook, 2026-11-25 to 2026-11-26" in au and "Routed by the router: 2 (50%)" in au
+          and "explicit model or effort): 1" in au and "Skipped (agent type in skip_agent_types): 1" in au
+          and "sonnet/medium 1" in au and "haiku/default 1" in au and "Capped by the budget: 1" in au and "WARNING: 1 routed start(s)" in au,
+          "the audit counts routed, kept, skipped, capped and overridden starts", au)
+
+    print("== --assess auto and the faster usage read")
+    check(router.stated_size("**Size** L", [], CFG) == "L" and router.stated_size("x", ["size: s"], CFG) == "S" and router.stated_size("x", [], CFG) == "?",
+          "the stated size comes from the text or a label")
+    calls2 = {"n": 0}
+    orig_assess = router.assess
+
+    def fake_assess(text: str, cfg: Dict[str, Any], repo: Any = None, runner: Any = None) -> Dict[str, Any]:
+        calls2["n"] += 1
+        return {"size": "L", "files": [], "risk": [], "critical": False, "reason": "r"}
+
+    router.assess = fake_assess
+    try:
+        with contextlib.redirect_stdout(io.StringIO()) as buf:
+            router.main(["score", "--text", "**Size** S. Rename a variable", "--text", "Rework the importer", "--assess", "auto", "--json"])
+    finally:
+        router.assess = orig_assess
+    outs = [json.loads(x) for x in buf.getvalue().splitlines()]
+    check(calls2["n"] == 1 and outs[0]["size_source"] == "stated" and outs[1]["size_source"] == "assessed"
+          and outs[0]["basis"] == "partly stated", "--assess auto asks only for the task that does not state its size", (calls2, outs))
+    check(router.score_text("**Size** S. **Critical:** no. **Risk:** none. Do it", CFG)["basis"] == "stated"
+          and router.score_text("Do it", CFG)["basis"] == "guessed", "the basis says how much of the choice rests on stated facts")
+    old_dir = pathlib.Path(tempfile.mkdtemp(prefix="old-"))
+    of = old_dir / "s.jsonl"
+    of.write_text(json.dumps({"timestamp": "2026-11-20T10:00:00Z", "message": {"id": "o1", "model": "claude-opus-5-5", "usage": {"input_tokens": 1}}}) + "\n", encoding="utf-8")
+    os.utime(of, (1700000000, 1700000000))
+    check(len(router.read_usage([old_dir], since="2026-11-01")) == 0 and len(router.read_usage([old_dir])) == 1,
+          "a file not touched since before the first day asked for is not read")
 
     print(f"\n{failures} failed")
     return 1 if failures else 0

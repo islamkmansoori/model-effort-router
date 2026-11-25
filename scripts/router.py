@@ -8,14 +8,17 @@
     python3 router.py score TASK.md --repo .                 # add facts from the git repository
     python3 router.py score TASK.md --write                  # put the choice line into the task file
     python3 router.py score TASK.md --write --retry 1 --cause worker
+    python3 router.py score TASK.md --retry 1 --failure-log out.txt   # the cause is suggested from the output
+    python3 router.py cause out.txt                          # whose failure was it: worker, environment or task?
     python3 router.py check-env                              # settings that would override the choice
+    python3 router.py audit                                  # what the hook did: routed, kept, skipped
+    python3 router.py budget                                 # spend against your daily, weekly, monthly limits
     python3 router.py record TASK.md --ran sonnet/high --first-try pass
     python3 router.py summary                                # the outcome log, with suggested point changes
 
 How it decides (every number lives in the config, not in this file):
   1. Critical: a `**Critical:** yes` line, a `critical` label, or a touched file under a configured critical path puts
-     the task on the top rung. Without any of those the tool guesses from words, skips sentences that deny them,
-     and labels the result "guessed".
+     the task on the top rung. Words alone are only named ("the text may touch the critical part"), never acted on.
   2. Risk: a `**Risk:** money|security|data` line, a mapped label, or a touched file under a configured risk path
      lifts the task to at least the risk floor. Risk words alone are named, never acted on.
   3. Points: size, acceptance criteria, dependencies, signals in the text, and (with --repo) how many files the
@@ -30,6 +33,7 @@ from __future__ import annotations
 import argparse
 import datetime
 import fnmatch
+import hashlib
 import json
 import os
 import pathlib
@@ -43,8 +47,8 @@ HERE = pathlib.Path(__file__).resolve().parent
 DEFAULT_CONFIG = HERE.parent / "config" / "default.json"
 PROJECT_CONFIG = pathlib.Path(".claude") / "model-router.json"
 MARK = "**Model and effort (model-effort-router):**"
-CAUSES = ("worker", "environment", "task")
-VERSION = "0.4.0"
+CAUSES = ("worker", "environment", "task")   # --cause; "unknown" and "repeat" are set by --failure-log
+VERSION = "0.5.0"
 
 # Settings that make Claude Code run on something other than what the router chose (Claude Code docs, Nov 2026).
 OVERRIDES = {
@@ -133,13 +137,64 @@ def task_body(text: str, cfg: Dict[str, Any]) -> str:
     return "\n".join(out)
 
 
-def criteria_count(text: str, cfg: Dict[str, Any]) -> int:
+def criteria_items(text: str, cfg: Dict[str, Any]) -> List[str]:
+    """The acceptance criteria, one string each, from the criteria section of the task."""
     c = cfg["criteria"]
     parts = re.split(c["start"], text, maxsplit=1, flags=re.I)
     if len(parts) < 2:
-        return 0
+        return []
     body = re.split(c["end"], parts[1], maxsplit=1, flags=re.I | re.M)[0]
-    return len(re.findall(c["item"], body, re.M))
+    items = []
+    for ln in body.splitlines():
+        m = re.match(c["item"], ln)
+        if m:
+            items.append(ln[m.end():].strip())
+    return items
+
+
+def criteria_count(text: str, cfg: Dict[str, Any]) -> int:
+    return len(criteria_items(text, cfg))
+
+
+def stated_size(body: str, labels: List[str], cfg: Dict[str, Any]) -> str:
+    """The size the task or its labels state, or "?"."""
+    m = re.search(cfg["size"]["pattern"], body, re.I)
+    if m:
+        return m.group(1).upper()
+    for lb in labels:
+        lm = re.match(cfg["labels"]["size"], lb, re.I)
+        if lm:
+            return lm.group(1).upper()
+    return "?"
+
+
+def readiness(text: str, cfg: Dict[str, Any]) -> List[str]:
+    """Why the task is not clear enough to start, if it is not: a vague task fails on every model, so this is
+    worth knowing before any tokens are spent. Advice only: it never changes the model or effort."""
+    rd = cfg["readiness"]
+    if not rd.get("enabled", True):
+        return []
+    notes: List[str] = []
+    items = criteria_items(text, cfg)
+    if items:
+        words: Set[str] = set()
+        vague = 0
+        for it in items:
+            hit = [w for w in rd["vague"] if re.search(rf"\b{re.escape(w)}\b", it, re.I)]
+            if hit:
+                vague += 1
+                words.update(w.lower() for w in hit)
+        if vague:
+            notes.append(f"{vague} of {len(items)} criteria are vague ({', '.join(sorted(words)[:4])}): "
+                         "say what must be observed")
+        short = sum(1 for it in items if len(it.split()) < rd["min_words"])
+        if short:
+            notes.append(f"{short} of {len(items)} criteria are under {rd['min_words']} words")
+    elif len(text.split()) >= rd["criteria_expected_over_words"]:
+        notes.append("no acceptance criteria: nothing to check the result against")
+    if said(rd["open_question"], text, cfg["negation"]):
+        notes.append("an open question: a person has to answer it first")
+    return notes
 
 
 # ---- the repository ------------------------------------------------------------------------------------------
@@ -203,7 +258,7 @@ def matches(paths: List[str], globs: List[str]) -> List[str]:
 
 def score_text(text: str, cfg: Dict[str, Any], retry: int = 0, cause: str = "worker", labels: Optional[List[str]] = None,
                repo: Optional[pathlib.Path] = None, facts: Optional[Dict[str, Any]] = None,
-               assessed: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+               assessed: Optional[Dict[str, Any]] = None, cap: Optional[int] = None, cap_reason: str = "") -> Dict[str, Any]:
     body = task_body(text, cfg)
     assessed = assessed or {}
     neg = cfg["negation"]
@@ -214,17 +269,11 @@ def score_text(text: str, cfg: Dict[str, Any], retry: int = 0, cause: str = "wor
     points = 0
 
     sz = cfg["size"]
-    m = re.search(sz["pattern"], body, re.I)
-    size = m.group(1).upper() if m else "?"
-    if size == "?":
-        for lb in labels:
-            lm = re.match(lab["size"], lb, re.I)
-            if lm:
-                size = lm.group(1).upper()
-                break
+    size = stated_size(body, labels, cfg)
+    size_source = "stated" if size != "?" else "unknown"
     size_note = ""
     if size == "?" and assessed.get("size") in sz["points"]:
-        size, size_note = assessed["size"], " assessed"
+        size, size_note, size_source = assessed["size"], " assessed", "assessed"
     sp = sz["points"].get(size, sz["default"])
     points += sp
     reasons.append(f"size {size}{size_note} (+{sp})")
@@ -281,6 +330,7 @@ def score_text(text: str, cfg: Dict[str, Any], retry: int = 0, cause: str = "wor
     crit_cfg = cfg["critical"]
     line = field(text, crit_cfg["line"])
     crit_paths = matches(facts["touched"], crit_cfg.get("paths", []))
+    critical_guess = False
     if line is not None:
         critical, critical_source = line.lower().startswith("yes"), "line"
     elif any(lb in [c.lower() for c in lab["critical"]] for lb in labels):
@@ -288,7 +338,9 @@ def score_text(text: str, cfg: Dict[str, Any], retry: int = 0, cause: str = "wor
     elif crit_paths:
         critical, critical_source = True, "paths"
     else:
-        critical, critical_source = said(crit_cfg["guess"], body, neg), "guessed"
+        # Words only guess: by default a guessed critical part is named, not acted on (`critical.guess_acts`).
+        critical_guess = said(crit_cfg["guess"], body, neg)
+        critical, critical_source = bool(critical_guess and crit_cfg.get("guess_acts")), "guessed"
 
     # 2. risk: the line, labels and configured paths act; words are only named.
     risk_cfg = cfg["risk"]
@@ -323,6 +375,8 @@ def score_text(text: str, cfg: Dict[str, Any], retry: int = 0, cause: str = "wor
         why = {"line": "", "label": " (critical label)", "paths": f" (touches {', '.join(crit_paths[:3])})",
                "guessed": f" (guessed: add **{crit_cfg['line']}:** yes or no)"}[critical_source]
         reasons.append("critical part changes: top of the ladder" + why)
+    if critical_guess and not critical:
+        reasons.append(f"the text may touch the critical part (add **{crit_cfg['line']}:** yes or no; a guess moves nothing)")
     if assessed.get("risk") and risk_source == "not set":
         reasons.append(f"the assessor suggests risk {', '.join(assessed['risk'])} (add **{risk_cfg['line']}:** to act on it)")
     if assessed.get("critical") and not critical:
@@ -331,19 +385,55 @@ def score_text(text: str, cfg: Dict[str, Any], retry: int = 0, cause: str = "wor
         reasons.append(f"risk not set; the text mentions {', '.join(risk_words)} "
                        f"(add **{risk_cfg['line']}:**; a guess moves nothing)")
 
-    # 4. retries: only the worker's own failures climb.
-    if retry and cause == "worker":
+    # A budget cap applies to first attempts of tasks that are neither critical nor risky.
+    if cap is not None and not retry and not critical and not risk and step > cap:
+        step = cap
+        reasons.append(cap_reason or f"capped at {ladder[cap][0]}, {ladder[cap][1]}")
+
+    # 4. retries: only the worker's own failures climb, and only up to the retry limit.
+    # `retry` counts failures so far and `cause` describes the latest one: a failure that was not the worker's
+    # earns no step, and the steps earlier failures earned are kept.
+    stop = False
+    if retry:
         jump = bool(cfg.get("retry_jumps_model"))
-        for _ in range(retry):
+        limit = int(cfg.get("max_worker_retries", 0) or 0)
+        earned = retry if cause == "worker" else retry - 1
+        steps = min(earned, limit) if limit else earned
+        for _ in range(steps):
             step = climb(step, ladder, jump)
-        reasons.append(f"retry {retry}, the worker's own failures: {retry} step(s) up"
-                       + (" (to the next model)" if jump else ""))
-    elif retry:
-        reasons.append(f"retry {retry} caused by the {cause}: same model and effort (fix the {cause} first)")
+        now_model, now_effort = ladder[min(step, len(ladder) - 1)]
+        if cause == "worker":
+            reasons.append(f"retry {retry}, the worker's own failures: {steps} step(s) up"
+                           + (" (to the next model)" if jump else ""))
+            if limit and retry > limit:
+                stop = True
+                reasons.append(f"retry limit ({limit}) reached: stop and ask a person")
+        else:
+            said_why = {"repeat": "the same failure on two different models, so it is unlikely to be the worker "
+                                  "(check the environment and the task)",
+                        "unknown": "the cause is not known (say whose failure it was)"}
+            reasons.append(f"retry {retry}: " + said_why.get(cause, f"caused by the {cause} (fix the {cause} first)")
+                           + f": stays on {now_model}, {now_effort}")
     model, effort = ladder[min(step, len(ladder) - 1)]
+
+    # A task that only runs a tool (tests, lint, git status) can go to the cheapest rung, when switched on.
+    mech = cfg.get("mechanical") or {}
+    mechanical = bool(mech.get("enabled") and not retry and not critical and not risk and step == 0
+                      and len(body.split()) <= mech["max_words"] and re.search(mech["patterns"], body, re.I)
+                      and not re.search(mech["not_if"], body, re.I))
+    if mechanical:
+        model, effort = mech["rung"]
+        reasons.append(f"mechanical task (it only runs a tool): {model}, {effort}")
+
+    notes = readiness(body, cfg)
+    stated = [size_source == "stated", critical_source != "guessed", risk_source != "not set"]
+    basis = "stated" if all(stated) else ("partly stated" if any(stated) else "guessed")
     return {"score": points, "model": model, "effort": effort, "rung": min(step, len(ladder) - 1),
             "critical": critical, "critical_source": critical_source, "risk": risk, "risk_source": risk_source,
-            "risk_words": risk_words, "signals": signals, "touched": facts["touched"], "reasons": reasons}
+            "risk_words": risk_words, "signals": signals, "touched": facts["touched"], "reasons": reasons,
+            "critical_guess": critical_guess, "size_source": size_source, "basis": basis, "mechanical": mechanical,
+            "stop": stop,
+            "ready": not notes, "readiness": notes}
 
 
 def climb(step: int, ladder: List[List[str]], jump_model: bool = False) -> int:
@@ -360,8 +450,9 @@ def climb(step: int, ladder: List[List[str]], jump_model: bool = False) -> int:
 
 
 def score_task(task: Task, cfg: Dict[str, Any], retry: int = 0, cause: str = "worker",
-               repo: Optional[pathlib.Path] = None, assessed: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    return score_text(task.text, cfg, retry, cause, task.labels, repo, assessed=assessed)
+               repo: Optional[pathlib.Path] = None, assessed: Optional[Dict[str, Any]] = None,
+               cap: Optional[int] = None, cap_reason: str = "") -> Dict[str, Any]:
+    return score_text(task.text, cfg, retry, cause, task.labels, repo, assessed=assessed, cap=cap, cap_reason=cap_reason)
 
 
 # ---- the assessor (optional: one cheap model call) -----------------------------------------------------------
@@ -415,7 +506,10 @@ def assess(text: str, cfg: Dict[str, Any], repo: Optional[pathlib.Path] = None, 
 
 
 def choice_line(r: Dict[str, Any]) -> str:
-    return f"{MARK} `{r['model']}`, effort `{r['effort']}`. Score {r['score']}: {'; '.join(r['reasons'])}."
+    line = f"{MARK} `{r['model']}`, effort `{r['effort']}`. Score {r['score']}: {'; '.join(r['reasons'])}."
+    if r.get("readiness"):
+        line += f" Before starting: {'; '.join(r['readiness'])}."
+    return line
 
 
 def chosen_in(text: str) -> str:
@@ -586,6 +680,13 @@ def read_usage(folders: List[pathlib.Path], since: str = "", until: str = "", me
     """One record per model reply (Claude Code repeats a reply's usage on every streamed block), from the JSONL
     transcripts under the folders. `mentions`: keep only sessions whose transcript contains that text."""
     files = sorted({f for d in folders for f in d.rglob("*.jsonl")})
+    if since:
+        # a file not touched since the day before `since` cannot hold a newer reply (a day's margin for time zones)
+        try:
+            floor = (datetime.datetime.strptime(since, "%Y-%m-%d") - datetime.timedelta(days=1)).timestamp()
+            files = [f for f in files if f.stat().st_mtime >= floor]
+        except (ValueError, OSError):
+            pass
     keep_sessions: Optional[Set[str]] = None
     if mentions:
         keep_sessions = set()
@@ -678,6 +779,183 @@ def savings_report(s: Dict[str, Any]) -> List[str]:
     return lines
 
 
+# ---- whose failure was it? (a suggestion from the failure output) ----------------------------------------------
+
+def suggest_cause(log_text: str, cfg: Dict[str, Any]) -> Dict[str, Any]:
+    """Suggest whose failure it was from a test run's or a worker's output. Environment evidence wins over task
+    evidence, which wins over worker evidence: a model is only blamed when nothing else explains the failure."""
+    found: Dict[str, List[str]] = {"environment": [], "task": [], "worker": []}
+    for ln in log_text.splitlines()[-3000:]:
+        line = ln.strip()
+        if not line:
+            continue
+        for cause in ("environment", "task", "worker"):
+            if any(re.search(pat, line, re.I) for pat in cfg["causes"][cause]):
+                found[cause].append(line[:200])
+                break
+    cause = next((c for c in ("environment", "task", "worker") if found[c]), "unknown")
+    return {"cause": cause, "counts": {c: len(v) for c, v in found.items()},
+            "evidence": found[cause][:3] if cause != "unknown" else []}
+
+
+def failure_fingerprint(log_text: str) -> str:
+    """A short hash of what failed, the same for two runs that failed the same way: numbers, addresses and folder
+    names are taken out, and only the lines that look like failures are kept."""
+    lines = [ln for ln in log_text.splitlines() if re.search(r"error|fail|exception|assert|traceback|^E\s", ln, re.I)]
+    text = "\n".join((lines or log_text.splitlines())[-200:])
+    text = re.sub(r"[\w.~/\\:-]*[/\\]([\w.-]+)", r"\1", text)      # paths: keep the file name only
+    text = re.sub(r"0x[0-9a-fA-F]+|\d+(\.\d+)?", "#", text)             # addresses, counts, timings
+    return hashlib.sha256(re.sub(r"\s+", " ", text).strip().encode("utf-8")).hexdigest()[:16]
+
+
+def note_failure(state_path: pathlib.Path, task_name: str, fingerprint: str, model: str,
+                 today: Optional[str] = None) -> Dict[str, Any]:
+    """Remember this failure and say whether the same one was seen before on this task (and on which models)."""
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else {}
+    except (OSError, ValueError):
+        state = {}
+    history = state.setdefault("failures", {}).setdefault(task_name, [])
+    same = [h for h in history if h.get("fingerprint") == fingerprint]
+    out = {"seen_before": bool(same), "other_models": sorted({h.get("model", "") for h in same} - {model})}
+    history.append({"fingerprint": fingerprint, "model": model, "day": today or datetime.date.today().isoformat()})
+    try:
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        state_path.write_text(json.dumps(state, indent=1), encoding="utf-8")
+    except OSError:
+        pass
+    return out
+
+
+# ---- audit: what the hook actually did ---------------------------------------------------------------------------
+
+def audit(path: pathlib.Path) -> List[str]:
+    """Read the hook's log back: how many subagent starts the router chose, kept or skipped."""
+    if not path.exists():
+        return [f"No hook log at {path}: the plugin's hook has not routed a subagent in this project "
+                "(is the plugin installed and enabled here?)."]
+    rows = []
+    for ln in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        try:
+            rows.append(json.loads(ln))
+        except ValueError:
+            continue
+    if not rows:
+        return [f"The hook log at {path} is empty."]
+    n = len(rows)
+    routed = [r for r in rows if r.get("action") == "routed"]
+    kept = [r for r in rows if str(r.get("action", "")).startswith("kept")]
+    skipped = [r for r in rows if str(r.get("action", "")).startswith("skipped")]
+    over = [r for r in routed if r.get("overridden_by")]
+    out = [f"{n} subagent starts seen by the hook, {rows[0].get('time', '?')[:10]} to {rows[-1].get('time', '?')[:10]}.",
+           f"- Routed by the router: {len(routed)} ({len(routed) / n:.0%})",
+           f"- Kept as the caller set them (explicit model or effort): {len(kept)}",
+           f"- Skipped (agent type in skip_agent_types): {len(skipped)}"]
+
+    def tally(items: List[str]) -> str:
+        counts: Dict[str, int] = {}
+        for x in items:
+            counts[x] = counts.get(x, 0) + 1
+        return ", ".join(f"{k} {v}" for k, v in sorted(counts.items(), key=lambda kv: -kv[1])) or "-"
+
+    out.append("- The router chose: " + tally([f"{r.get('model')}/{r.get('effort')}" for r in routed]))
+    if kept:
+        out.append("- Kept choices were: " + tally([f"{r.get('model') or 'default'}/{r.get('effort') or 'default'}" for r in kept]))
+    out.append("- By agent type: " + tally([r.get("agent_type") or "?" for r in rows]))
+    capped = sum(1 for r in routed if any("budget" in x for x in r.get("reasons", [])))
+    if capped:
+        out.append(f"- Capped by the budget: {capped}")
+    if over:
+        out.append(f"- WARNING: {len(over)} routed start(s) ran while a machine setting overrides the choice "
+                   f"({over[-1]['overridden_by'][0].split(':')[0]}): run check-env")
+    return out
+
+
+# ---- budget: spend against limits, from Claude Code's usage records -----------------------------------------------
+
+def projects_dir_for(cwd: pathlib.Path) -> pathlib.Path:
+    """Where Claude Code keeps the transcripts of sessions started in this folder."""
+    return pathlib.Path.home() / ".claude" / "projects" / re.sub(r"[^A-Za-z0-9]", "-", str(cwd))
+
+
+def spend(records: List[Dict[str, Any]], cfg: Dict[str, Any]) -> float:
+    total = 0.0
+    for r in records:
+        price = price_of(r["model"], cfg["prices"])
+        if price:
+            total += usage_cost(r["usage"], price)
+    return total
+
+
+def budget_status(folders: List[pathlib.Path], cfg: Dict[str, Any], today: Optional[datetime.date] = None,
+                  records: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+    """API-equivalent spend today, in the last 7 days and this month, against the limits in the config."""
+    b = cfg["budget"]
+    day = today or datetime.date.today()
+    starts = {"daily": day, "weekly": day - datetime.timedelta(days=6), "monthly": day.replace(day=1)}
+    first = min(starts.values()).isoformat()
+    recs = records if records is not None else read_usage(folders, since=first)
+    out: Dict[str, Any] = {"periods": {}, "exceeded": False}
+    for name, start in starts.items():
+        spent = spend([r for r in recs if start.isoformat() <= r["day"] <= day.isoformat()], cfg)
+        limit = float(b.get(name) or 0)
+        level = "no limit"
+        if limit:
+            share = spent / limit
+            reached = [a for a in sorted(b["alert_at"]) if share >= a]
+            level = "ok" if not reached else ("EXCEEDED" if reached[-1] >= 1 else f"over {reached[-1]:.0%}")
+            out["exceeded"] = out["exceeded"] or share >= 1
+        out["periods"][name] = {"since": start.isoformat(), "spent": spent, "limit": limit, "level": level}
+    return out
+
+
+def budget_report(s: Dict[str, Any]) -> List[str]:
+    names = {"daily": "Today", "weekly": "Last 7 days", "monthly": "This month"}
+    lines = ["API-equivalent spend from Claude Code's usage records (a subscription is billed differently)."]
+    for k, v in s["periods"].items():
+        if v["limit"]:
+            lines.append(f"- {names[k]}: ${v['spent']:,.2f} of ${v['limit']:,.2f} ({v['spent'] / v['limit']:.0%}): {v['level']}")
+        else:
+            lines.append(f"- {names[k]}: ${v['spent']:,.2f} (no limit set)")
+    if not any(v["limit"] for v in s["periods"].values()):
+        lines.append('Set limits in .claude/model-router.json, for example "budget": {"daily": 20, "monthly": 300}.')
+    return lines
+
+
+def budget_cap(cwd: pathlib.Path, cfg: Dict[str, Any], now: Optional[float] = None,
+               folders: Optional[List[pathlib.Path]] = None) -> Optional[Dict[str, Any]]:
+    """For the hook: the rung to cap ordinary tasks at when today's spend is past the throttle point, or None.
+    Today's spend is kept in a small cache file so the hook does not re-read the transcripts on every call."""
+    import time
+    b = cfg["budget"]
+    limit = float(b.get("daily") or 0)
+    if not b.get("throttle") or not limit:
+        return None
+    now = time.time() if now is None else now
+    day = datetime.date.fromtimestamp(now).isoformat()
+    cache = cwd / ".claude" / "model-router-budget.json"
+    spent: Optional[float] = None
+    try:
+        c = json.loads(cache.read_text(encoding="utf-8"))
+        if c.get("day") == day and now - float(c.get("at", 0)) < float(b.get("cache_minutes", 10)) * 60:
+            spent = float(c["spent"])
+    except (OSError, ValueError, KeyError):
+        pass
+    if spent is None:
+        spent = spend(read_usage(folders or [projects_dir_for(cwd)], since=day, until=day), cfg)
+        try:
+            cache.parent.mkdir(parents=True, exist_ok=True)
+            cache.write_text(json.dumps({"day": day, "spent": spent, "at": now}), encoding="utf-8")
+        except OSError:
+            pass
+    if spent < float(b.get("throttle_at", 0.8)) * limit:
+        return None
+    rung = int(b.get("throttle_rung", 0))
+    model, effort = cfg["ladder"][rung]
+    return {"rung": rung, "reason": f"daily budget {spent / limit:.0%} used (${spent:,.2f} of ${limit:,.2f}): capped at "
+                                    f"{model}, {effort} (critical and risky tasks, and retries, are not capped)"}
+
+
 # ---- command line --------------------------------------------------------------------------------------------
 
 def main(argv: List[str]) -> int:
@@ -691,10 +969,15 @@ def main(argv: List[str]) -> int:
     s.add_argument("--issue", action="append", default=[], help="a GitHub issue: owner/repo#123 or its URL")
     s.add_argument("--text", action="append", default=[], help="a plain prompt")
     s.add_argument("--repo", type=pathlib.Path, help="add facts from this git repository (files, tests, changes)")
-    s.add_argument("--assess", action="store_true", help="ask a cheap model (config `assess`) to estimate size and files")
+    s.add_argument("--assess", nargs="?", const="always", choices=("always", "auto"),
+                   help="ask a cheap model (config `assess`) to estimate size and files; "
+                        "`auto` asks only when the task does not state its size")
     s.add_argument("--write", action="store_true", help="put the choice line into each task file")
     s.add_argument("--retry", type=int, default=0, help="rungs earned by failing its own tests twice")
     s.add_argument("--cause", choices=CAUSES, help="with --retry: whose failure (only worker moves up)")
+    s.add_argument("--failure-log", type=pathlib.Path,
+                   help="with --retry: the failing output; the cause is suggested from it when --cause is not "
+                        "given, and the same failure on two models stops the climb")
     s.add_argument("--json", action="store_true")
     sub.add_parser("check-env", help="settings on this machine that would override the choice")
     rc = sub.add_parser("record", help="add a finished task's outcome to the log")
@@ -708,6 +991,13 @@ def main(argv: List[str]) -> int:
     rc.add_argument("--note", default="")
     rc.add_argument("--repo", type=pathlib.Path)
     sub.add_parser("summary", help="read the log back, with suggested point changes")
+    cs = sub.add_parser("cause", help="suggest whose failure it was (worker, environment or task) from failing output")
+    cs.add_argument("log", help="a file with the failing output, or - for standard input")
+    cs.add_argument("--json", action="store_true")
+    sub.add_parser("audit", help="what the hook did: how many subagent starts the router chose, kept or skipped")
+    bg = sub.add_parser("budget", help="API-equivalent spend today, this week and this month against your limits")
+    bg.add_argument("--projects-dir", type=pathlib.Path, action="append", default=[])
+    bg.add_argument("--json", action="store_true")
     sv = sub.add_parser("savings", help="estimate what model choice saved, from Claude Code's usage records")
     sv.add_argument("--projects-dir", type=pathlib.Path, action="append", default=[],
                     help="transcript folder(s); default: this folder's under ~/.claude/projects")
@@ -737,9 +1027,37 @@ def main(argv: List[str]) -> int:
     if a.cmd == "summary":
         print("\n".join(summary(read_log(log), cfg)))
         return 0
+    if a.cmd == "cause":
+        text = sys.stdin.read() if a.log == "-" else pathlib.Path(a.log).read_text(encoding="utf-8", errors="ignore")
+        sug = suggest_cause(text, cfg)
+        if a.json:
+            print(json.dumps(sug))
+        else:
+            c = sug["counts"]
+            print(f"Suggested cause: {sug['cause']} (lines that point to the environment {c['environment']}, "
+                  f"the task {c['task']}, the worker {c['worker']}).")
+            for ev in sug["evidence"]:
+                print(f"  {ev}")
+            print({"environment": "Fix the environment and run again on the same model: a bigger model does not help.",
+                   "task": "A person has to settle the task first: a bigger model does not help.",
+                   "worker": "The change itself looks wrong: retry with --retry 1 --cause worker.",
+                   "unknown": "Nothing recognised: read the output and say whose failure it was."}[sug["cause"]])
+        return 0
+    if a.cmd == "audit":
+        lines = audit(pathlib.Path(cfg["hook"]["runs_log"]))
+        print("\n".join(lines))
+        return 0 if len(lines) > 1 else 1
+    if a.cmd == "budget":
+        dirs = a.projects_dir or [projects_dir_for(pathlib.Path.cwd())]
+        missing = [d for d in dirs if not d.exists()]
+        if missing:
+            print(f"No transcripts at {missing[0]}; pass --projects-dir (a folder under ~/.claude/projects)")
+            return 1
+        st = budget_status(dirs, cfg)
+        print(json.dumps(st, indent=1) if a.json else "\n".join(budget_report(st)))
+        return 1 if st["exceeded"] else 0
     if a.cmd == "savings":
-        dirs = a.projects_dir or [pathlib.Path.home() / ".claude" / "projects" /
-                                  re.sub(r"[^A-Za-z0-9]", "-", str(pathlib.Path.cwd()))]
+        dirs = a.projects_dir or [projects_dir_for(pathlib.Path.cwd())]
         missing = [d for d in dirs if not d.exists()]
         if missing:
             print(f"No transcripts at {missing[0]}; pass --projects-dir (a folder under ~/.claude/projects)")
@@ -756,23 +1074,45 @@ def main(argv: List[str]) -> int:
             return 1
         return 0
 
-    if a.retry and not a.cause:
-        ap.error("--retry needs --cause worker, environment or task: only the worker's own failures move it up")
+    if a.retry and not a.cause and not a.failure_log:
+        ap.error("--retry needs --cause worker, environment or task, or --failure-log with the failing output: "
+                 "only the worker's own failures move it up")
     tasks = [load_task(t) for t in a.tasks] + [fetch_issue(i) for i in a.issue] + \
             [Task(t, f"text {i + 1}") for i, t in enumerate(a.text)]
     if not tasks:
         ap.error("give a task file, --issue or --text")
     for t in tasks:
-        est = assess(t.text, cfg, a.repo) if a.assess else None
-        if a.assess and not est:
+        want = a.assess == "always" or (a.assess == "auto" and
+                                        stated_size(task_body(t.text, cfg), [lb.lower() for lb in t.labels], cfg) == "?")
+        est = assess(t.text, cfg, a.repo) if want else None
+        if want and not est:
             print(f"{t.name}: the assessor gave no answer; scoring without it", file=sys.stderr)
-        r = score_task(t, cfg, a.retry, a.cause or "worker", a.repo, assessed=est)
+        cause = a.cause or "worker"
+        notes: List[str] = []
+        if a.retry and a.failure_log:
+            failing = a.failure_log.read_text(encoding="utf-8", errors="ignore")
+            failed_on = score_task(t, cfg, max(a.retry - 1, 0), "worker", a.repo, assessed=est)["model"]
+            seen = note_failure(pathlib.Path(cfg["state"]), t.name, failure_fingerprint(failing), failed_on)
+            sug = suggest_cause(failing, cfg)
+            if not a.cause:
+                cause = sug["cause"]
+                notes.append(f"cause suggested from the failure log: {cause}"
+                             + (f" ({sug['evidence'][0][:80]})" if sug["evidence"] else ""))
+            if seen["other_models"] and cause == "worker":
+                cause = "repeat"
+                notes.append(f"this exact failure was already seen on {', '.join(seen['other_models'])}")
+        r = score_task(t, cfg, a.retry, cause, a.repo, assessed=est)
+        r["reasons"] += notes
         if a.write and t.path is not None:
             write_choice(t.path, r)
         if a.json:
             print(json.dumps({"task": t.name, **r}))
         else:
             print(f"{t.name:<32} {r['model']:<6} {r['effort']:<6} score {r['score']:>2}  {'; '.join(r['reasons'])}")
+            if r["readiness"]:
+                print(f"{'':<32} before starting: {'; '.join(r['readiness'])}")
+            if r["stop"]:
+                print(f"{'':<32} STOP: the retry limit is reached; ask a person before spending more")
     return 0
 
 

@@ -7,9 +7,12 @@ Use it when: deciding which Claude model or effort a Claude Code subagent or wor
 Key facts:
 - Install: `/plugin marketplace add islamkmansoori/model-effort-router` then `/plugin install model-effort-router@model-effort-router`.
 - A PreToolUse hook sets `model` and `effort` on every Agent tool call that does not name them (verified live).
-- Explicit `**Critical:**` and `**Risk:**` lines, labels and configured paths raise the model; risk guessed from words never does.
+- Explicit `**Critical:**` and `**Risk:**` lines, labels and configured paths raise the model; a risk or a critical part guessed from words never does.
+- `router.py cause` reads failing output and says whose failure it was: the worker (a wrong change), the environment (missing module, full disk, port, rate limit) or the task (ambiguous, needs a decision). Only a worker failure earns a stronger model; the same failure on two models stops the climb; after two retries it says to ask a person.
+- Readiness check: vague acceptance criteria and open questions are flagged before any tokens are spent.
+- `router.py budget` reports spend against daily, weekly and monthly limits; the hook can cap ordinary tasks past 80% of the daily limit. `router.py audit` shows what the hook chose.
 - Retries move up only for the worker's own failures, not for environment or task problems; by default a retry jumps from Sonnet straight to Opus.
-- Benchmark (21 SWE-bench Verified tasks, 84 runs): starting on Sonnet medium and jumping to Opus high on failure solved 20/21 for 13% less than always using Opus high; Opus xhigh solved nothing Opus high did not; raw issue text did not predict difficulty well.
+- Benchmark (21 SWE-bench Verified tasks, 84 runs): starting on Sonnet medium and jumping to Opus high on failure solved 20/21 for 13% less than always using Opus high; Opus xhigh solved nothing Opus high did not; raw issue text did not predict difficulty well, and neither did a four-tier keyword scorer ($4.21 against $4.01 for starting cheap).
 - Optional assessor: one Haiku call estimates size and files for vague tasks (under a cent per task).
 - `router.py savings` estimates what model choice saved from Claude Code's own usage records; on a real 18-day multi-agent project, mixing models saved about 29% against all-Opus.
 - Outcome log with suggested rule changes; benchmark compares fixed rungs, climbing, the router and the hindsight optimum, tuned on one half of the tasks and tested on the other.

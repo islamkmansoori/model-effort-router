@@ -6,7 +6,9 @@ router.py, and answers with `updatedInput` carrying `model` and `effort`. It nev
 or when the call is skipped, it prints nothing and exits 0, and Claude Code goes on as if there were no hook.
 
 Skipped: hook disabled in the config, a subagent type in `hook.skip_agent_types`, or (with `respect_explicit`)
-a call that already names its model or effort. Every decision is appended to `hook.runs_log` (JSON lines).
+a call that already names its model or effort. Every decision is appended to `hook.runs_log` (JSON lines), which
+`router.py audit` reads back. With `budget.throttle` on, first attempts of ordinary tasks are capped once today's
+spend passes the throttle point; with `mechanical.enabled`, tasks that only run a tool go to the cheapest rung.
 """
 from __future__ import annotations
 
@@ -37,8 +39,12 @@ def decide(event: Dict[str, Any], cfg: Dict[str, Any], cwd: pathlib.Path,
         return {"_log": {**entry, "action": "kept (explicit)", "model": ti.get("model"), "effort": ti.get("effort")}}
     text = "\n\n".join(str(ti.get(k) or "") for k in ("description", "prompt"))
     repo = cwd if (cwd / ".git").exists() else None
-    est = router.assess(text, cfg, repo) if hk.get("assess") else None
-    r = router.score_text(text, cfg, repo=repo, assessed=est)
+    mode = hk.get("assess")
+    want = mode is True or mode == "always" or (mode == "auto" and router.stated_size(router.task_body(text, cfg), [], cfg) == "?")
+    est = router.assess(text, cfg, repo) if want else None
+    cap = router.budget_cap(cwd, cfg)
+    r = router.score_text(text, cfg, repo=repo, assessed=est, cap=cap["rung"] if cap else None,
+                          cap_reason=cap["reason"] if cap else "")
     overrides = router.check_env(env)
     out: Dict[str, Any] = {"hookSpecificOutput": {
         "hookEventName": "PreToolUse",

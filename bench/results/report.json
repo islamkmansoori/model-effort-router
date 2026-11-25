@@ -49,19 +49,27 @@
   },
   "Router (rules only)": {
    "solved": 14,
-   "cost": 1.7797651
+   "cost": 1.6214045
   },
-  "Router (rules only), climb on failure": {
+  "Router (rules only), jump on failure": {
    "solved": 20,
-   "cost": 4.5412018000000005
+   "cost": 4.0107129
   },
   "Router (with assessor)": {
    "solved": 14,
-   "cost": 1.8492645600000002
+   "cost": 1.69090396
   },
-  "Router (with assessor), climb on failure": {
+  "Router (with assessor), jump on failure": {
    "solved": 20,
-   "cost": 4.610701260000001
+   "cost": 4.08021236
+  },
+  "Keyword tiers (top tier starts on Opus)": {
+   "solved": 17,
+   "cost": 2.8722184
+  },
+  "Keyword tiers (top tier starts on Opus), jump on failure": {
+   "solved": 20,
+   "cost": 4.212654000000001
   },
   "Cheapest rung that worked (hindsight)": {
    "solved": 20,

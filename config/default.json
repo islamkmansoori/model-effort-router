@@ -33,6 +33,7 @@
     ]
   ],
   "retry_jumps_model": true,
+  "max_worker_retries": 2,
   "size": {
     "pattern": "(?:\\*\\*)?size(?:\\*\\*)?:?(?:\\*\\*)?\\s*(XS|S|M|L|XL)\\b",
     "points": {
@@ -100,6 +101,7 @@
   "critical": {
     "line": "Critical",
     "guess": "\\b(critical path|ledger|billing engine|authentication flow|cryptograph\\w*|golden (?:test|file)s?)\\b",
+    "guess_acts": false,
     "paths": []
   },
   "risk": {
@@ -187,7 +189,8 @@
     "respect_explicit": true,
     "permission_decision": null,
     "runs_log": ".claude/model-router-runs.jsonl",
-    "assess": false
+    "assess": false,
+    "_about": "assess: false, true (always) or \"auto\" (only when the task does not state its size). Each assessor call is one cheap model call before the subagent starts."
   },
   "assess": {
     "model": "haiku",
@@ -237,5 +240,81 @@
       0.1
     ]
   },
-  "savings_baseline": "claude-opus-5-5"
+  "savings_baseline": "claude-opus-5-5",
+  "readiness": {
+    "_about": "Advice before starting: a vague task fails on every model. It never changes the model or effort.",
+    "enabled": true,
+    "min_words": 5,
+    "criteria_expected_over_words": 120,
+    "vague": [
+      "correctly",
+      "properly",
+      "successfully",
+      "as expected",
+      "should work",
+      "looks good",
+      "user friendly",
+      "user-friendly",
+      "seamlessly",
+      "efficiently",
+      "effectively",
+      "appropriately"
+    ],
+    "open_question": "(open question|\\bTBD\\b|to be decided|to be confirmed)"
+  },
+  "causes": {
+    "_about": "Patterns that suggest whose failure it was, tried in this order: environment, task, worker. Used by `cause` and by `score --retry N --failure-log FILE`.",
+    "environment": [
+      "No space left on device|disk quota exceeded",
+      "ModuleNotFoundError|No module named|Cannot find module",
+      "command not found|is not recognized as an internal or external command",
+      "Connection refused|ECONNREFUSED|ETIMEDOUT|Connection timed out|Could not resolve host|Temporary failure in name resolution|Network is unreachable",
+      "Address already in use|EADDRINUSE",
+      "Permission denied|EACCES|Operation not permitted",
+      "rate.?limit|\\b429\\b|overloaded|quota exceeded|Credit balance is too low",
+      "\\b401\\b|Unauthorized|authentication failed|invalid api key|403 Forbidden",
+      "MemoryError|out of memory|OOMKilled|Killed: 9",
+      "Cannot connect to the Docker daemon|docker: not found"
+    ],
+    "task": [
+      "ambiguous|underspecified|not specified in the (task|story|issue|ticket)",
+      "contradict(s|ory|ion)",
+      "needs? (a |the )?(decision|clarification)|waiting for (a |the )?(decision|answer)",
+      "blocked (by|on) (a |the )?(decision|question|person)|open question|cannot decide"
+    ],
+    "worker": [
+      "AssertionError|\\bFAILED\\b|\\d+ failed|Tests? failed",
+      "expected .* (but )?(got|was|received)",
+      "SyntaxError|IndentationError|TypeError|NameError|AttributeError|KeyError|ValueError|IndexError",
+      "Traceback \\(most recent call last\\)",
+      "error TS\\d+|error\\[E\\d+\\]|compilation (error|failed)|cannot find symbol"
+    ]
+  },
+  "mechanical": {
+    "_about": "Off by default (not benchmarked). When on, a short task that only runs a tool goes to this rung, unless it is critical, risky, a retry, or asks for a change.",
+    "enabled": false,
+    "rung": [
+      "haiku",
+      "low"
+    ],
+    "max_words": 60,
+    "patterns": "\\b(run|execute|re-?run)\\s+(the\\s+)?(unit\\s+|e2e\\s+|integration\\s+)?(tests?|test suite|linter|lint|formatter|type.?check(er)?|build)\\b|\\b(lint|format)\\s+(the\\s+)?(code|files?|project)\\b|\\bgit\\s+(status|diff|log|branch|stash)\\b|\\b(show|list|print)\\s+(me\\s+)?(the\\s+)?(changes|diff|changed files|test coverage|coverage)\\b|\\bwhat\\s+changed\\b|\\bdocker\\s+(ps|build|compose)\\b",
+    "not_if": "\\b(fix|implement|refactor|add|write|change|create|build a|design|migrate|debug|investigate|update)\\b"
+  },
+  "budget": {
+    "_about": "US dollars at API list prices, from Claude Code's usage records for this project. 0 means no limit. `budget` reports against these and exits 1 when one is exceeded. With throttle on, the hook caps first attempts of ordinary tasks at throttle_rung once today's spend passes throttle_at of the daily limit; critical and risky tasks and retries are never capped.",
+    "daily": 0,
+    "weekly": 0,
+    "monthly": 0,
+    "alert_at": [
+      0.75,
+      0.9,
+      1.0
+    ],
+    "throttle": false,
+    "throttle_at": 0.8,
+    "throttle_rung": 0,
+    "cache_minutes": 10
+  },
+  "state": ".claude/model-router-state.json"
 }

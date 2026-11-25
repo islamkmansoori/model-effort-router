@@ -9,7 +9,8 @@ Does the router choose a model and effort that solves real tasks for less? This 
 **Report.** Because every rung runs on every task, any way of choosing can be scored afterwards from the same runs:
 - always one rung;
 - start at the bottom and climb on failure (paying for every attempt);
-- the router's choice, with rules only and with the assessor (its cost included), alone and climbing on failure;
+- the router's choice, with rules only and with the assessor (its cost included), alone and jumping on failure;
+- a keyword-tier scorer from an earlier project (`keyword_tiers.py`), its top tier starting on Opus: a baseline to beat, and a template for trying your own word list against the same runs;
 - the cheapest rung that worked, known only in hindsight: the floor no method can beat.
 
 ```
@@ -17,6 +18,8 @@ python3 bench/run.py fetch
 python3 bench/run.py validate --set pilot              # free: the known fix passes on this machine
 python3 bench/run.py route --set pilot                 # free
 python3 bench/run.py route --set pilot --assess --auth login   # one cheap model call per task
+python3 bench/run.py route --set full --assess --reuse-assessed  # free: recompute from the stored estimates
+python3 bench/run.py tune                                      # free: tune on half the tasks, test on the other
 python3 bench/run.py run --set pilot --total-budget 30 --auth login --jobs 2
 python3 bench/run.py report                            # results/REPORT.md, results/report.json
 ```

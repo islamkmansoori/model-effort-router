@@ -1,0 +1,170 @@
+{
+ "pylint-dev__pylint-4604": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "tier": "complex",
+  "score": 0.38,
+  "jump": true
+ },
+ "pylint-dev__pylint-4970": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "tier": "simple",
+  "score": -0.12,
+  "jump": true
+ },
+ "pylint-dev__pylint-6386": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "tier": "mid",
+  "score": 0.16,
+  "jump": true
+ },
+ "pylint-dev__pylint-8898": {
+  "rung": 2,
+  "model": "opus",
+  "effort": "high",
+  "tier": "coding_heavy",
+  "score": 0.9,
+  "jump": true
+ },
+ "pytest-dev__pytest-10051": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "tier": "simple",
+  "score": 0.04,
+  "jump": true
+ },
+ "pytest-dev__pytest-10081": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "tier": "complex",
+  "score": 0.31,
+  "jump": true
+ },
+ "pytest-dev__pytest-10356": {
+  "rung": 2,
+  "model": "opus",
+  "effort": "high",
+  "tier": "coding_heavy",
+  "score": 0.56,
+  "jump": true
+ },
+ "pytest-dev__pytest-5631": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "tier": "complex",
+  "score": 0.31,
+  "jump": true
+ },
+ "pytest-dev__pytest-5787": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "tier": "complex",
+  "score": 0.31,
+  "jump": true
+ },
+ "pytest-dev__pytest-5809": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "tier": "complex",
+  "score": 0.36,
+  "jump": true
+ },
+ "pytest-dev__pytest-5840": {
+  "rung": 2,
+  "model": "opus",
+  "effort": "high",
+  "tier": "coding_heavy",
+  "score": 1.02,
+  "jump": true
+ },
+ "pytest-dev__pytest-6197": {
+  "rung": 2,
+  "model": "opus",
+  "effort": "high",
+  "tier": "coding_heavy",
+  "score": 0.53,
+  "jump": true
+ },
+ "pytest-dev__pytest-6202": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "tier": "complex",
+  "score": 0.28,
+  "jump": true
+ },
+ "pytest-dev__pytest-7205": {
+  "rung": 2,
+  "model": "opus",
+  "effort": "high",
+  "tier": "coding_heavy",
+  "score": 0.56,
+  "jump": true
+ },
+ "pytest-dev__pytest-7236": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "tier": "complex",
+  "score": 0.28,
+  "jump": true
+ },
+ "pytest-dev__pytest-7324": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "tier": "simple",
+  "score": -0.07,
+  "jump": true
+ },
+ "pytest-dev__pytest-7432": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "tier": "complex",
+  "score": 0.28,
+  "jump": true
+ },
+ "pytest-dev__pytest-7490": {
+  "rung": 2,
+  "model": "opus",
+  "effort": "high",
+  "tier": "coding_heavy",
+  "score": 1.62,
+  "jump": true
+ },
+ "pytest-dev__pytest-7571": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "tier": "mid",
+  "score": 0.13,
+  "jump": true
+ },
+ "pytest-dev__pytest-7982": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "tier": "mid",
+  "score": 0.13,
+  "jump": true
+ },
+ "pytest-dev__pytest-8399": {
+  "rung": 0,
+  "model": "sonnet",
+  "effort": "medium",
+  "tier": "simple",
+  "score": 0.04,
+  "jump": true
+ }
+}

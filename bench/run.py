@@ -35,6 +35,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "scripts"))
+sys.path.insert(0, str(HERE))
+import keyword_tiers  # noqa: E402
 import router  # noqa: E402
 
 DATA = HERE / "data"
@@ -240,16 +242,23 @@ def validate(ts: List[Dict[str, Any]]) -> int:
 ROUTE_FILES = {False: "routes.json", True: "routes-assessed.json"}
 
 
-def route(ts: List[Dict[str, Any]], with_assessor: bool = False) -> Dict[str, Dict[str, Any]]:
+def route(ts: List[Dict[str, Any]], with_assessor: bool = False, reuse: bool = False) -> Dict[str, Dict[str, Any]]:
     """What the router chooses for each task: the issue text plus facts from the repository at the base commit.
     With the assessor, a cheap model also reads the issue and the code at that commit first (its cost is kept)."""
     cfg = router.load_config(pathlib.Path("/nonexistent"))
     out: Dict[str, Dict[str, Any]] = {}
+    keywords: Dict[str, Dict[str, Any]] = {}
+    sf = RESULTS / ROUTE_FILES[True]
+    stored: Dict[str, Dict[str, Any]] = json.loads(sf.read_text(encoding="utf-8")) if reuse and sf.exists() else {}
     for t in ts:
         m = mirror(t["repo"])
         files = sh(["git", "-C", str(m), "ls-tree", "-r", "--name-only", t["base_commit"]]).stdout.split()
         est: Dict[str, Any] = {}
-        if with_assessor:
+        prior = stored.get(t["instance_id"], {})
+        if with_assessor and reuse and prior.get("assessed"):
+            # the estimate the assessor already gave for this task, and what that call cost: no new model call
+            est = {**prior["assessed"], "cost_usd": prior.get("assess_cost_usd", 0)}
+        elif with_assessor:
             d = WORK / "assess" / t["instance_id"]
             with _lock:
                 sh(["git", "-C", str(m), "worktree", "prune"])
@@ -267,12 +276,18 @@ def route(ts: List[Dict[str, Any]], with_assessor: bool = False) -> Dict[str, Di
         r = router.score_text(t["problem_statement"], cfg, facts=facts, assessed=est)
         out[t["instance_id"]] = {"rung": r["rung"], "model": r["model"], "effort": r["effort"], "score": r["score"],
                                  "reasons": r["reasons"], "assess_cost_usd": est.get("cost_usd", 0) if est else 0,
-                                 "assessed": {k: est.get(k) for k in ("size", "files", "reason")} if est else None}
+                                 "assessed": {k: est.get(k) for k in ("size", "files", "reason")} if est else None,
+                                 "jump": bool(cfg.get("retry_jumps_model"))}
+        # The keyword-tier baseline (bench/keyword_tiers.py): its top tier starts on Opus high, the rest at the bottom.
+        kw_tier, kw_score = keyword_tiers.tier(t["problem_statement"])
+        kw_rung = 2 if kw_tier == keyword_tiers.TIERS[-1] else 0
+        keywords[t["instance_id"]] = {"rung": kw_rung, "model": LADDER[kw_rung][0], "effort": LADDER[kw_rung][1],
+                                      "tier": kw_tier, "score": kw_score, "jump": True}
         print(f"{t['instance_id']:<28} {t['difficulty']:<16} {r['model']}/{r['effort']:<7} score {r['score']}: {'; '.join(r['reasons'])}")
     RESULTS.mkdir(parents=True, exist_ok=True)
-    f = RESULTS / ROUTE_FILES[with_assessor]
-    old = json.loads(f.read_text()) if f.exists() else {}
-    f.write_text(json.dumps({**old, **out}, indent=1), encoding="utf-8")
+    for f, new in ((RESULTS / ROUTE_FILES[with_assessor], out), (RESULTS / "routes-keywords.json", keywords)):
+        old = json.loads(f.read_text(encoding="utf-8")) if f.exists() else {}
+        f.write_text(json.dumps({**old, **new}, indent=1), encoding="utf-8")
     return out
 
 
@@ -391,12 +406,12 @@ def strategies(runs: Dict[str, Dict[str, Any]], routes: Dict[str, Dict[str, Dict
         if not all(i in rt for i in ids):
             continue
         extra = sum(float(rt[i].get("assess_cost_usd") or 0) for i in ids)
-        out[f"Router {label}"] = {"solved": sum(ok(i, rt[i]["rung"]) for i in ids),
-                                  "cost": sum(cost(i, rt[i]["rung"]) for i in ids) + extra}
+        out[label] = {"solved": sum(ok(i, rt[i]["rung"]) for i in ids),
+                      "cost": sum(cost(i, rt[i]["rung"]) for i in ids) + extra}
         jump = bool(rt[ids[0]].get("jump", False))
         s = [climb(i, rt[i]["rung"], jump) for i in ids]
-        out[f"Router {label}, {'jump' if jump else 'climb'} on failure"] = {"solved": sum(x[0] for x in s),
-                                                                            "cost": sum(x[1] for x in s) + extra}
+        out[f"{label}, {'jump' if jump else 'climb'} on failure"] = {"solved": sum(x[0] for x in s),
+                                                                     "cost": sum(x[1] for x in s) + extra}
     best = []
     for i in ids:
         wins = [cost(i, k) for k in range(len(LADDER)) if ok(i, k)]
@@ -443,7 +458,7 @@ def tune() -> int:
                     cands.append(dict(source=src, thresholds=th, jump=jump, routes=routes))
     def score_on(c: Dict[str, Any], part: List[str]) -> Dict[str, Any]:
         st = strategies(runs, {"x": c["routes"]}, part)
-        key = [k for k in st if k.startswith("Router x,")][0]
+        key = [k for k in st if k.startswith("x, ")][0]
         return st[key]
     seen = set()
     uniq = []
@@ -453,12 +468,13 @@ def tune() -> int:
             seen.add(sig)
             uniq.append(c)
     best = min(uniq, key=lambda c: (-score_on(c, tune_ids)["solved"], score_on(c, tune_ids)["cost"]))
-    default = {i: {**v, "jump": False} for i, v in base.get("rules", {}).items()}
+    jump_default = bool(router.load_config(pathlib.Path("/nonexistent")).get("retry_jumps_model"))
+    default = {i: {**v, "jump": jump_default} for i, v in base.get("rules", {}).items()}
     tuned_test = score_on(best, test_ids)
     out = {"tune_ids": tune_ids, "test_ids": test_ids, "candidates": len(uniq),
            "chosen": {"source": best["source"], "thresholds": best["thresholds"], "retry_jumps_model": best["jump"]},
            "tuned_on_tune_half": score_on(best, tune_ids), "tuned_on_test_half": tuned_test,
-           "test_half_baselines": strategies(runs, {"(default rules)": default} if default else {}, test_ids)}
+           "test_half_baselines": strategies(runs, {"Router (default rules)": default} if default else {}, test_ids)}
     (RESULTS / "tuning.json").write_text(json.dumps(out, indent=1), encoding="utf-8")
     print(json.dumps({k: v for k, v in out.items() if k not in ("tune_ids", "test_ids")}, indent=1))
     return 0
@@ -493,7 +509,8 @@ def md_to_html(lines: List[str]) -> str:
 def report() -> int:
     runs = done_runs()
     routes: Dict[str, Dict[str, Dict[str, Any]]] = {}
-    for label, fname in (("(rules only)", "routes.json"), ("(with assessor)", "routes-assessed.json")):
+    for label, fname in (("Router (rules only)", "routes.json"), ("Router (with assessor)", "routes-assessed.json"),
+                         ("Keyword tiers (top tier starts on Opus)", "routes-keywords.json")):
         if (RESULTS / fname).exists():
             routes[label] = json.loads((RESULTS / fname).read_text(encoding="utf-8"))
     ids = sorted({r["instance_id"] for r in runs.values()
@@ -512,7 +529,8 @@ def report() -> int:
         per = f"${v['cost'] / v['solved']:.2f}" if v["solved"] else "-"
         lines.append(f"| {name} | {v['solved']}/{len(ids)} | ${v['cost']:.2f} | {per} |")
     lines += ["", "Router costs include the assessor's own model call. Climb on failure = if the chosen rung fails, run the "
-              "next one up, paying for every attempt.", "",
+              "next one up, paying for every attempt; jump = go straight to the next model. Keyword tiers is a "
+              "four-tier keyword scorer from an earlier project (`bench/keyword_tiers.py`).", "",
               "## Each task", "", "| Task | Difficulty | Router chose (rules / assessor) | " + " | ".join(f"{m} {e}" for m, e in LADDER) + " |",
               "|---|---|---|" + "---|" * len(LADDER)]
     for i in ids:
@@ -520,7 +538,8 @@ def report() -> int:
         for k in range(len(LADDER)):
             r = runs[f"{i}|{k}"]
             cells.append(f"{'solved' if r.get('resolved') else 'not solved'} ${float(r.get('cost_usd') or 0):.2f}")
-        ch = " / ".join(f"{rt[i]['model']} {rt[i]['effort']}" if i in rt else "-" for rt in routes.values()) or "-"
+        ch = " / ".join(f"{rt[i]['model']} {rt[i]['effort']}" if i in rt else "-"
+                        for name, rt in routes.items() if name.startswith("Router")) or "-"
         lines.append(f"| {i} | {diff[i]} | {ch} | " + " | ".join(cells) + " |")
     tp = RESULTS / "tuning.json"
     if tp.exists():
@@ -579,6 +598,8 @@ def main(argv: List[str]) -> int:
         p.add_argument("--ids", nargs="*", default=[])
         if name == "route":
             p.add_argument("--assess", action="store_true", help="also ask the assessor (a cheap model call per task)")
+            p.add_argument("--reuse-assessed", action="store_true",
+                           help="with --assess: reuse the estimates already stored in results/ (no model calls)")
             p.add_argument("--auth", choices=("api", "login"), default="api")
         if name == "run":
             p.add_argument("--rungs", default="0,1,2,3")
@@ -604,7 +625,7 @@ def main(argv: List[str]) -> int:
         return validate(ts)
     if a.cmd == "route":
         AUTH = a.auth
-        route(ts, a.assess)
+        route(ts, a.assess, a.reuse_assessed)
         return 0
     AUTH = a.auth
     if AUTH == "api" and not os.environ.get("ANTHROPIC_API_KEY"):

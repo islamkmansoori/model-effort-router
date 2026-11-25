@@ -10,13 +10,15 @@
 | Always opus xhigh | 20/21 | $5.50 | $0.28 |
 | Start at the bottom, climb on failure | 20/21 | $4.38 | $0.22 |
 | Start at the bottom, jump to the next model on failure | 20/21 | $4.01 | $0.20 |
-| Router (rules only) | 14/21 | $1.78 | $0.13 |
-| Router (rules only), climb on failure | 20/21 | $4.54 | $0.23 |
-| Router (with assessor) | 14/21 | $1.85 | $0.13 |
-| Router (with assessor), climb on failure | 20/21 | $4.61 | $0.23 |
+| Router (rules only) | 14/21 | $1.62 | $0.12 |
+| Router (rules only), jump on failure | 20/21 | $4.01 | $0.20 |
+| Router (with assessor) | 14/21 | $1.69 | $0.12 |
+| Router (with assessor), jump on failure | 20/21 | $4.08 | $0.20 |
+| Keyword tiers (top tier starts on Opus) | 17/21 | $2.87 | $0.17 |
+| Keyword tiers (top tier starts on Opus), jump on failure | 20/21 | $4.21 | $0.21 |
 | Cheapest rung that worked (hindsight) | 20/21 | $2.70 | $0.13 |
 
-Router costs include the assessor's own model call. Climb on failure = if the chosen rung fails, run the next one up, paying for every attempt.
+Router costs include the assessor's own model call. Climb on failure = if the chosen rung fails, run the next one up, paying for every attempt; jump = go straight to the next model. Keyword tiers is a four-tier keyword scorer from an earlier project (`bench/keyword_tiers.py`).
 
 ## Each task
 
@@ -39,7 +41,7 @@ Router costs include the assessor's own model call. Climb on failure = if the ch
 | pytest-dev__pytest-7236 | 15 min - 1 hour | sonnet medium / sonnet medium | solved $0.07 | solved $0.10 | solved $0.20 | solved $0.22 |
 | pytest-dev__pytest-7324 | 15 min - 1 hour | sonnet medium / sonnet medium | solved $0.08 | solved $0.09 | solved $0.19 | solved $0.18 |
 | pytest-dev__pytest-7432 | <15 min fix | sonnet medium / sonnet medium | solved $0.07 | solved $0.08 | solved $0.13 | solved $0.19 |
-| pytest-dev__pytest-7490 | 15 min - 1 hour | opus xhigh / opus xhigh | solved $0.09 | solved $0.09 | solved $0.24 | solved $0.25 |
+| pytest-dev__pytest-7490 | 15 min - 1 hour | sonnet medium / sonnet medium | solved $0.09 | solved $0.09 | solved $0.24 | solved $0.25 |
 | pytest-dev__pytest-7571 | 15 min - 1 hour | sonnet medium / sonnet medium | solved $0.07 | solved $0.09 | solved $0.18 | solved $0.20 |
 | pytest-dev__pytest-7982 | <15 min fix | sonnet medium / sonnet medium | solved $0.05 | solved $0.05 | solved $0.12 | solved $0.10 |
 | pytest-dev__pytest-8399 | 15 min - 1 hour | sonnet medium / sonnet medium | solved $0.05 | solved $0.05 | solved $0.21 | solved $0.11 |
@@ -56,7 +58,7 @@ The 21 tasks are split in a fixed way (every other task by id). 24 starting rule
 | Always opus xhigh | 10/10 | $2.36 | $0.24 |
 | Start at the bottom, climb on failure | 10/10 | $1.35 | $0.14 |
 | Start at the bottom, jump to the next model on failure | 10/10 | $1.20 | $0.12 |
-| Router (default rules) | 8/10 | $0.84 | $0.10 |
-| Router (default rules), climb on failure | 10/10 | $1.51 | $0.15 |
+| Router (default rules) | 8/10 | $0.68 | $0.08 |
+| Router (default rules), jump on failure | 10/10 | $1.20 | $0.12 |
 | Cheapest rung that worked (hindsight) | 10/10 | $1.07 | $0.11 |
-| **Tuned router (chosen on the other half)** | 10/10 | $1.38 | $0.14 |
+| **Tuned router (chosen on the other half)** | 10/10 | $1.23 | $0.12 |

@@ -1,6 +1,6 @@
 ---
 name: route-task
-description: Choose the Claude model and effort for a task before handing it to a subagent or a separate worker session, and record how it went afterwards. Use when delegating a task written in a file (a story, an issue, a work packet), a GitHub issue or a plain prompt; when a worker fails and may need a stronger model; when a task is finished; or when the user asks which model or effort a task should run on.
+description: Choose the Claude model and effort for a task before handing it to a subagent or a separate worker session, decide what to do when a worker fails, and record how it went. Use when delegating a task written in a file (a story, an issue, a work packet), a GitHub issue or a plain prompt; when a worker or its tests fail and you must decide between retrying, a stronger model, fixing the environment or asking a person; when a task is finished; or when the user asks which model or effort a task should run on, what the router chose, or how much is being spent.
 argument-hint: "[task file | owner/repo#123 | \"prompt\"]"
 ---
 
@@ -20,14 +20,23 @@ The script is `${CLAUDE_PLUGIN_ROOT}/scripts/router.py` (Python 3.9+, standard l
    - a file: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/router.py" score <task file> --repo . --write` (writes the choice under its title)
    - a GitHub issue: `... score --issue owner/repo#123 --repo .`
    - a plain prompt: `... score --text "<prompt>" --repo .`
-   Add `--assess` when the task says little about its size (a short issue, a one-line prompt): a cheap model reads it and the code and estimates the size and files. It costs a model call, so do not use it for tasks that state their size.
-4. Start the worker on exactly that model and effort: `claude --model <model> --effort <effort>`. Do not choose by hand.
+   Add `--assess auto`: when the task does not state its size, a cheap model reads it and the code and estimates the size and files; when it does, nothing is spent.
+4. Read the "before starting" line, if there is one (vague criteria, an open question, no criteria). Tell the user and get the task fixed first when you can: an unclear task fails on every model.
+5. Start the worker on exactly that model and effort: `claude --model <model> --effort <effort>`. Do not choose by hand.
 
 ## When a worker fails its own tests twice
 
-Say whose failure it was first. Count a failure only after the test set-up itself works.
-- `worker` (the change is wrong): `score <task> --write --retry 1 --cause worker` (then `--retry 2`), and restart one rung up.
-- `environment` (missing build output, a port, a broken tool) or `task` (it needs a decision only a person can make, or its criteria contradict each other): fix that or ask the user. A bigger model fixes neither, so the model and effort stay the same.
+Find out whose failure it was before anything else. Save the failing output to a file and run:
+
+`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/router.py" score <task> --write --retry 1 --failure-log <output file>` (then `--retry 2` after the next failure)
+
+It suggests the cause from the output and acts on it:
+- `worker` (the change is wrong): the choice moves to the next model. Restart the worker there.
+- `environment` (a missing module, a full disk, a port, a rate limit) or `task` (it needs a decision only a person can make, or its criteria contradict each other): the model and effort stay the same, because a bigger model fixes neither. Fix the environment, or ask the user.
+- The same failure on two different models: it stops climbing. Check the environment and the task.
+- `STOP` (the retry limit is reached): do not start another worker. Tell the user what failed and ask.
+
+If you know the cause better than the output shows, say it: `--retry 1 --cause worker|environment|task` wins over the suggestion. `router.py cause <output file>` shows the suggestion and its evidence without changing anything.
 
 ## When a task is finished
 
@@ -36,6 +45,12 @@ Ask what the session actually ran on (`/effort status`, the session header, or `
 `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/router.py" record <task> --ran <model>/<effort> --first-try pass|fail --retries <n> --other "<environment n, task n or none>" --findings <review findings> --note "..."`
 
 A warning means what ran differs from what was chosen: run `check-env` on that machine. `summary` reads the log back and suggests point changes; apply them to `.claude/model-router.json` only after 10 to 20 tasks.
+
+## When the user asks what the router is doing or what it costs
+
+- `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/router.py" audit`: how many subagent starts the hook routed, kept as the caller set them, skipped or capped.
+- `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/router.py" budget`: API-equivalent spend today, this week and this month against the limits in the config (exit 1 when one is passed).
+- `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/router.py" savings --since <YYYY-MM-DD>`: what the mix of models saved against running everything on the baseline model.
 
 ## New project
 

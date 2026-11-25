@@ -45,7 +45,7 @@
  },
  "tuned_on_test_half": {
   "solved": 10,
-  "cost": 1.3846355300000002
+  "cost": 1.2262749300000002
  },
  "test_half_baselines": {
   "Always sonnet medium": {
@@ -74,11 +74,11 @@
   },
   "Router (default rules)": {
    "solved": 8,
-   "cost": 0.8376438
+   "cost": 0.6792832
   },
-  "Router (default rules), climb on failure": {
+  "Router (default rules), jump on failure": {
    "solved": 10,
-   "cost": 1.5088909000000001
+   "cost": 1.1951656000000002
   },
   "Cheapest rung that worked (hindsight)": {
    "solved": 10,
