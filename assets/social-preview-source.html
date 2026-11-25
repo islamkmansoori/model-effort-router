@@ -1,0 +1,80 @@
+<!doctype html>
+<!-- Source of assets/social-preview.png. Render: Chrome headless, 1280x640 at device scale 2 (macOS fonts: Avenir Next, SF Mono/Menlo). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>model-effort-router social preview</title>
+<style>
+/* Layout concept: tasks (left) climb a ladder of models (right); the headline states the idea, one stat proves it.
+   Palette: cool paper, navy ink, one signal orange used only for "a task being routed" and the result figure. */
+:root {
+  --ground: #EDEFF3;
+  --ink: #0E1B2E;
+  --ink-2: #4B5A70;
+  --rung-1: #D3DAE5;
+  --rung-2: #A9B7CA;
+  --rung-3: #6A7F9D;
+  --rung-4: #0E1B2E;
+  --signal: #EE4F1A;
+  --display: "Avenir Next", "Helvetica Neue", Arial, sans-serif;
+  --mono: "SF Mono", Menlo, "Courier New", monospace;
+}
+* { box-sizing: border-box; margin: 0; }
+html, body { width: 1280px; height: 640px; background: var(--ground); overflow: hidden; }
+body { position: relative; font-family: var(--display); color: var(--ink); -webkit-font-smoothing: antialiased; }
+
+.brand { position: absolute; left: 64px; top: 52px; display: flex; align-items: center; gap: 14px; }
+.brand span { font: 600 24px/1 var(--mono); letter-spacing: -0.01em; }
+.meta { position: absolute; right: 64px; top: 58px; font: 500 18px/1 var(--mono); color: var(--ink-2); }
+
+h1 { position: absolute; left: 64px; top: 124px; width: 600px; font: 800 76px/0.98 var(--display); letter-spacing: -0.03em; text-wrap: balance; }
+.sub { position: absolute; left: 64px; top: 372px; width: 540px; font: 500 27px/1.3 var(--display); color: var(--ink-2); }
+
+.proof { position: absolute; left: 64px; bottom: 52px; display: flex; align-items: flex-end; gap: 22px; }
+.proof b { font: 800 76px/0.9 var(--display); letter-spacing: -0.04em; color: var(--signal); font-variant-numeric: tabular-nums; }
+.proof p { width: 320px; font: 500 21px/1.3 var(--display); color: var(--ink); padding-bottom: 4px; }
+.proof p i { font-style: normal; color: var(--ink-2); }
+
+/* the ladder */
+.ladder { position: absolute; left: 700px; right: 64px; bottom: 76px; height: 440px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; align-items: end; }
+.step { position: relative; display: flex; align-items: flex-start; padding: 14px 14px; font: 600 19px/1 var(--mono); }
+.s1 { height: 104px; background: var(--rung-1); color: var(--ink); }
+.s2 { height: 184px; background: var(--rung-2); color: var(--ink); }
+.s3 { height: 278px; background: var(--rung-3); color: #fff; }
+.s4 { height: 372px; background: var(--rung-4); color: #fff; }
+.tag { position: absolute; left: 0; z-index: 5; bottom: calc(100% + 16px); background: #fff; border: 2px solid var(--signal); padding: 8px 10px 9px; white-space: nowrap; font: 600 17px/1.15 var(--mono); color: var(--ink); }
+.tag small { display: block; font: 500 14px/1.2 var(--mono); color: var(--ink-2); margin-top: 3px; }
+.tag::after { content: ""; position: absolute; left: 22px; top: 100%; width: 2px; height: 14px; background: var(--signal); }
+.s4 .tag { left: auto; right: 0; } .s4 .tag::after { left: auto; right: 24px; }
+.note { position: absolute; right: 64px; bottom: 36px; font: 500 16px/1 var(--mono); color: var(--ink-2); }
+.base { position: absolute; left: 700px; right: 64px; bottom: 76px; height: 2px; background: var(--ink); }
+</style>
+</head>
+<body>
+  <div class="brand">
+    <svg width="38" height="38" viewBox="0 0 38 38" aria-hidden="true">
+      <rect x="0" y="26" width="8" height="12" fill="#A9B7CA"/><rect x="10" y="17" width="8" height="21" fill="#6A7F9D"/>
+      <rect x="20" y="8" width="8" height="30" fill="#0E1B2E"/><rect x="30" y="0" width="8" height="38" fill="#EE4F1A"/>
+    </svg>
+    <span>model-effort-router</span>
+  </div>
+  <div class="meta">MIT · no dependencies</div>
+
+  <h1>Every task to the model it needs.</h1>
+  <p class="sub">Any model, paid or local. Every choice explained, every failure sorted by cause.</p>
+
+  <div class="proof">
+    <b>20/21</b>
+    <p>SWE-bench tasks solved<br><i>for 13% less than<br>always using the top model</i></p>
+  </div>
+
+  <div class="ladder">
+    <div class="step s1">local<div class="tag">typo fix<small>size XS</small></div></div>
+    <div class="step s2">small<div class="tag">endpoint<small>size M</small></div></div>
+    <div class="step s3">large<div class="tag">payments<small>risk: money</small></div></div>
+    <div class="step s4">top<div class="tag">ledger<small>critical: yes</small></div></div>
+  </div>
+  <div class="base"></div>
+  <div class="note">example ladder · you choose the models</div>
+</body>
+</html>
