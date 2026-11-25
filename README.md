@@ -40,7 +40,7 @@ Without the plugin, copy `scripts/router.py` and `config/default.json` (as `scri
 1. **Start cheap and jump straight to Opus on failure.** Sonnet medium first, Opus high if it fails: 20 of 21 solved for **$4.01**, against **$4.62** for always using Opus high (same tasks solved, 13% less). It also won on the half of the tasks that no tuning saw. This is now the default (`"retry_jumps_model": true`).
 2. **The in-between rungs rarely pay.** More effort on Sonnet rescued 1 task out of 7 that Sonnet medium failed; Opus xhigh solved nothing Opus high did not, for more money.
 3. **Reading a raw bug report does not predict its difficulty well.** Neither the word rules nor the Haiku assessor picked out the hard issues in advance, so on plain issues the router starts on the cheap rung and the jump does the rest. The router earns its place with explicit facts (`**Critical:**`, `**Risk:**`, labels, paths), where a wrong first choice is expensive, not by guessing difficulty from prose.
-4. **Keyword tiers do not predict it either.** The four-tier keyword scorer of Lymbix, an earlier project by the same author (interface and CRUD words pull a task down; architecture, algorithm and DevOps words push it up), was run against the same tasks. Starting its top tier on Opus cost **$4.21**, more than starting everything cheap ($4.01). It is kept in `bench/keyword_tiers.py` so you can try your own word list against the same runs.
+4. **Keyword tiers do not predict it either.** The four-tier keyword scorer of an earlier project by the same author (interface and CRUD words pull a task down; architecture, algorithm and DevOps words push it up), was run against the same tasks. Starting its top tier on Opus cost **$4.21**, more than starting everything cheap ($4.01). It is kept in `bench/keyword_tiers.py` so you can try your own word list against the same runs.
 5. **A guess that acts costs money.** One task was sent to Opus xhigh because its pasted package list contained the word "cryptography". Sonnet medium solved it. Since then a critical part guessed from wording is only named, like a guessed risk.
 6. **There is room left.** Knowing in advance which rung would work costs **$2.70** for the same 20 tasks: a better predictor could still save about a third. Tell us what predicts it in your tasks.
 
@@ -71,7 +71,7 @@ On a private 18-day multi-agent build (43 sessions, 19,226 model replies), mixin
 | Keyword tiers (top tier starts on Opus), jump on failure | 20/21 | $4.21 | $0.21 |
 | Cheapest rung that worked (hindsight) | 20/21 | $2.70 | $0.13 |
 
-Router costs include the assessor's own model call. Climb on failure = if the chosen rung fails, run the next one up, paying for every attempt; jump = go straight to the next model. Keyword tiers is a the four-tier keyword scorer of Lymbix, an earlier project by the same author (`bench/keyword_tiers.py`).
+Router costs include the assessor's own model call. Climb on failure = if the chosen rung fails, run the next one up, paying for every attempt; jump = go straight to the next model. Keyword tiers is a the four-tier keyword scorer of an earlier project by the same author (`bench/keyword_tiers.py`).
 
 **Tuned on one half, tested on the other.**
 
@@ -193,18 +193,18 @@ Yes: add `["haiku", "low"]` to the bottom of the ladder. The assessor uses Haiku
 - Passing tests are evidence, not proof. For critical and risky tasks, keep a review.
 - Model names and effort levels follow Claude Code as of November 2026.
 
-## Lymbix tools
+## Earlier routing tools
 
-The mechanisms around the routing (failure causes, the repeated-failure guard, the retry limit, the readiness check, budget alerts and the audit) come from **Lymbix**, an earlier AI engineering assistant by the same author. Its original routing and token-optimisation code is published in [lymbix_tools/](lymbix_tools/) as a standalone tool:
+The mechanisms around the routing (failure causes, the repeated-failure guard, the retry limit, the readiness check, budget alerts and the audit) come from an earlier AI engineering project by the same author. Its routing and token-optimisation code is published in [routing_tools/](routing_tools/) as a standalone tool:
 
 ```
-python3 lymbix_tools/cli.py tier STORY.md          # complexity tier: simple, mid, complex or coding_heavy
-python3 lymbix_tools/cli.py route STORY.md         # model tier: fast, balanced or premium
-python3 lymbix_tools/cli.py classify "run tests with pytest"   # a model request, or a local tool?
-python3 lymbix_tools/cli.py guard US-42 --output out.txt --exit-code 1   # repeated output and token budget
+python3 routing_tools/cli.py tier STORY.md          # complexity tier: simple, mid, complex or coding_heavy
+python3 routing_tools/cli.py route STORY.md         # model tier: fast, balanced or premium
+python3 routing_tools/cli.py classify "run tests with pytest"   # a model request, or a local tool?
+python3 routing_tools/cli.py guard US-42 --output out.txt --exit-code 1   # repeated output and token budget
 ```
 
-It also holds a token and cost logger, retry analytics, classifier feedback, a prompt cache and a routing-authority lock: see [lymbix_tools/README.md](lymbix_tools/README.md). The router does not decide with Lymbix's keyword tiers, because they lost to "start cheap, jump on failure" on the benchmark; they are kept as a baseline. That folder is under the Apache License 2.0; the rest of the repository is MIT.
+It also holds a token and cost logger, retry analytics, classifier feedback, a prompt cache and a routing-authority lock: see [routing_tools/README.md](routing_tools/README.md). The router does not decide with that project's keyword tiers, because they lost to "start cheap, jump on failure" on the benchmark; they are kept as a baseline. That folder is under the Apache License 2.0; the rest of the repository is MIT.
 
 ## Contributing
 
@@ -216,4 +216,4 @@ See [CITATION.cff](CITATION.cff), or use GitHub's "Cite this repository" button.
 
 ## License
 
-MIT, see [LICENSE](LICENSE), except [lymbix_tools/](lymbix_tools/), which is under the Apache License 2.0.
+MIT, see [LICENSE](LICENSE), except [routing_tools/](routing_tools/), which is under the Apache License 2.0.

@@ -1,7 +1,7 @@
-"""A small stand-in for Lymbix's config loader (written for model-effort-router, not copied).
+"""A small stand-in for the original project's config loader (written for model-effort-router, not copied).
 
-Lymbix's own `lymbix/config.py` holds the whole product's settings. The modules copied here read only a few keys
-(`model_routing`, `force_model_tier`, `budget`), so this loader returns those from `lymbix_tools.json` in the current
+The original `config.py` holds the whole product's settings. The modules copied here read only a few keys
+(`model_routing`, `force_model_tier`, `budget`), so this loader returns those from `routing_tools.json` in the current
 folder when it exists, and an empty config otherwise.
 """
 import json
@@ -10,7 +10,7 @@ from typing import Any, Dict, Optional
 
 
 def load_config(root: Optional[Path] = None) -> Dict[str, Any]:
-    path = (root or Path.cwd()) / "lymbix_tools.json"
+    path = (root or Path.cwd()) / "routing_tools.json"
     try:
         if path.exists():
             data = json.loads(path.read_text(encoding="utf-8"))

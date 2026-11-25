@@ -1,5 +1,5 @@
 """
-Retry Analytics Engine for Lymbix CLI.
+Retry Analytics Engine for command line.
 Tracks retry patterns, failure rates, and root causes across stories.
 Generates reports and alerts on high retry rates.
 
@@ -47,7 +47,7 @@ class RetryAnalytics:
 
     ALERT_THRESHOLD = 0.10  # alert when >10% of executions are retries
 
-    def __init__(self, history_dir: str = ".lymbix_data/retry_history"):
+    def __init__(self, history_dir: str = ".routing_data/retry_history"):
         self.history_dir = Path(history_dir)
         try:
             self.history_dir.mkdir(parents=True, exist_ok=True)

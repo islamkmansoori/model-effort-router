@@ -1,9 +1,9 @@
-# Copied from the Lymbix project (lymbix/complexity_scorer.py, commit d305040, 2026-10-09). Apache-2.0, see LICENSE.
+# Copied from an earlier project by the same author (commit d305040, 2026-10-09). Apache-2.0, see LICENSE.
 # Modified for model-effort-router on 2026-11-25: the model call in _call_llm_first() reads its endpoint, key and
-# model from the environment (LYMBIX_LLM_URL, LITELLM_MASTER_KEY, LYMBIX_LLM_MODEL) and is skipped when no
+# model from the environment (ROUTING_LLM_URL, LITELLM_MASTER_KEY, ROUTING_LLM_MODEL) and is skipped when no
 # endpoint is set; the original called a local proxy with a built-in default key. Nothing else is changed.
 """
-Lymbix Complexity Scorer
+Complexity Scorer
 ======================
 Plugs into: Executor (before model selection)
 Strategy  : Rule-based fast pass → free LLM call if confidence is low
@@ -32,7 +32,7 @@ from typing import Optional
 
 class ComplexityTier(str, Enum):
     """
-    Four tiers that map to the Lymbix model chain.
+    Four tiers that map to the model chain.
 
     SIMPLE       → free models  (Groq Llama, Gemini Flash)
     MID          → cheap paid   (Mistral, Together AI)
@@ -290,22 +290,22 @@ Return ONLY valid JSON in exactly this format (no markdown, no explanation):
 
 def _call_llm_first(story_text: str) -> Optional[dict]:
     """
-    LLM-First Fast Pass. Hits the Lymbix proxy bridge to semantically classify the story.
+    LLM-First Fast Pass. Hits the model proxy bridge to semantically classify the story.
     Returns {"tier": "...", "confidence": 0.99, "reason": "..."}
     """
     import urllib.request
     import urllib.error
 
     # Changed for model-effort-router: the endpoint and key come only from the environment (no default key is
-    # shipped), and without LYMBIX_LLM_URL there is no model call, so score() falls back to the rules.
-    llm_url = os.environ.get("LYMBIX_LLM_URL", "")
+    # shipped), and without ROUTING_LLM_URL there is no model call, so score() falls back to the rules.
+    llm_url = os.environ.get("ROUTING_LLM_URL", "")
     if not llm_url:
         return None
     api_key = os.environ.get("LITELLM_MASTER_KEY", "")
 
     payload = json.dumps(
         {
-            "model": os.environ.get("LYMBIX_LLM_MODEL", "gemini-flash"),
+            "model": os.environ.get("ROUTING_LLM_MODEL", "gemini-flash"),
             "temperature": 0.1,
             "max_tokens": 200,
             "response_format": {"type": "json_object"},
@@ -611,7 +611,7 @@ if __name__ == "__main__":
     }
 
     print("\n" + "═" * 60)
-    print("  Lymbix Complexity Scorer — Demo Run")
+    print("  Complexity Scorer — Demo Run")
     print("═" * 60)
 
     scorer = ComplexityScorer()

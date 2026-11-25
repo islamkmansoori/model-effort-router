@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""Command line for the Lymbix tools (written for model-effort-router; the modules it calls are Lymbix's own).
+"""Command line for the routing tools (written for model-effort-router; the modules it calls are from an earlier project by the same author).
 
-    python3 lymbix_tools/cli.py tier STORY.md            # complexity tier and the model Lymbix would pick
-    python3 lymbix_tools/cli.py tier STORY.md --llm      # ask a model first (needs LYMBIX_LLM_URL), rules as fallback
-    python3 lymbix_tools/cli.py route STORY.md           # model tier: fast, balanced or premium, with the reason
-    python3 lymbix_tools/cli.py classify "run tests with pytest"   # a model request, or a local tool (which command)?
-    python3 lymbix_tools/cli.py failure "db schema error: no such column"   # root-cause category of a failure
-    python3 lymbix_tools/cli.py sort A.md B.md C.md      # simple stories first, coding-heavy last
-    python3 lymbix_tools/cli.py guard US-42 --output out.txt --exit-code 1 --tokens 1800   # loop and budget guard
-    python3 lymbix_tools/cli.py feedback record US-42 RC-002 "Action Request" DONE --model sonnet --cost 0.02
-    python3 lymbix_tools/cli.py feedback summary
-    python3 lymbix_tools/cli.py tokens                   # token and cost totals from .lymbix_data/token_usage.jsonl
-    python3 lymbix_tools/cli.py retries                  # retry statistics from .lymbix_data/retry_history
+    python3 routing_tools/cli.py tier STORY.md            # complexity tier and the model would pick
+    python3 routing_tools/cli.py tier STORY.md --llm      # ask a model first (needs ROUTING_LLM_URL), rules as fallback
+    python3 routing_tools/cli.py route STORY.md           # model tier: fast, balanced or premium, with the reason
+    python3 routing_tools/cli.py classify "run tests with pytest"   # a model request, or a local tool (which command)?
+    python3 routing_tools/cli.py failure "db schema error: no such column"   # root-cause category of a failure
+    python3 routing_tools/cli.py sort A.md B.md C.md      # simple stories first, coding-heavy last
+    python3 routing_tools/cli.py guard US-42 --output out.txt --exit-code 1 --tokens 1800   # loop and budget guard
+    python3 routing_tools/cli.py feedback record US-42 RC-002 "Action Request" DONE --model sonnet --cost 0.02
+    python3 routing_tools/cli.py feedback summary
+    python3 routing_tools/cli.py tokens                   # token and cost totals from .routing_data/token_usage.jsonl
+    python3 routing_tools/cli.py retries                  # retry statistics from .routing_data/retry_history
 
 Text arguments may be a file path, a quoted string, or - for standard input. Add --json to any command for JSON.
 Standard library only; `rich` is optional and only used by the modules' own dashboards.
@@ -27,14 +27,14 @@ from typing import Any, Dict, List
 if __package__ in (None, ""):          # run as a script: make the package importable
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from lymbix_tools.classifier_feedback import ClassifierFeedback  # noqa: E402
-from lymbix_tools.complexity_classifier import ComplexityClassifier  # noqa: E402
-from lymbix_tools.complexity_scorer import ComplexityScorer, sort_backlog_by_complexity  # noqa: E402
-from lymbix_tools.llm_guard import LLMGuard  # noqa: E402
-from lymbix_tools.model_router import ModelRouter  # noqa: E402
-from lymbix_tools.request_classifier import FAILURE_TAXONOMY, RequestClassifier  # noqa: E402
-from lymbix_tools.retry_analytics import RetryAnalytics  # noqa: E402
-from lymbix_tools.token_logger import TokenLogger  # noqa: E402
+from routing_tools.classifier_feedback import ClassifierFeedback  # noqa: E402
+from routing_tools.complexity_classifier import ComplexityClassifier  # noqa: E402
+from routing_tools.complexity_scorer import ComplexityScorer, sort_backlog_by_complexity  # noqa: E402
+from routing_tools.llm_guard import LLMGuard  # noqa: E402
+from routing_tools.model_router import ModelRouter  # noqa: E402
+from routing_tools.request_classifier import FAILURE_TAXONOMY, RequestClassifier  # noqa: E402
+from routing_tools.retry_analytics import RetryAnalytics  # noqa: E402
+from routing_tools.token_logger import TokenLogger  # noqa: E402
 
 
 def text_of(arg: str) -> str:
@@ -58,7 +58,7 @@ def emit(data: Dict[str, Any], lines: List[str], as_json: bool) -> None:
 
 
 def main(argv: List[str]) -> int:
-    ap = argparse.ArgumentParser(prog="lymbix_tools", description="Lymbix's routing and token tools, standalone.")
+    ap = argparse.ArgumentParser(prog="routing_tools", description="Routing and token tools, standalone.")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     def add(name: str, help_text: str) -> argparse.ArgumentParser:
@@ -68,7 +68,7 @@ def main(argv: List[str]) -> int:
 
     p = add("tier", "complexity tier (simple, mid, complex, coding_heavy) and the recommended model")
     p.add_argument("text")
-    p.add_argument("--llm", action="store_true", help="ask a model first (LYMBIX_LLM_URL), fall back to the rules")
+    p.add_argument("--llm", action="store_true", help="ask a model first (ROUTING_LLM_URL), fall back to the rules")
     p = add("route", "model tier (fast, balanced, premium) with the reason")
     p.add_argument("text")
     p.add_argument("--story-id", default="")
@@ -89,7 +89,7 @@ def main(argv: List[str]) -> int:
     p.add_argument("--exit-code", type=int, default=0)
     p.add_argument("--tokens", type=int, default=0)
     p.add_argument("--budget", type=int, default=100000, help="token budget for the story")
-    p.add_argument("--dir", default=".lymbix_data/retry_history")
+    p.add_argument("--dir", default=".routing_data/retry_history")
     p = add("feedback", "record a classification's outcome, or summarise precision per category")
     p.add_argument("action", choices=("record", "summary"))
     p.add_argument("fields", nargs="*", help="record: story_id classified_as category_label outcome")
@@ -97,14 +97,14 @@ def main(argv: List[str]) -> int:
     p.add_argument("--duration", type=float, default=0.0)
     p.add_argument("--tokens", type=int, default=0)
     p.add_argument("--cost", type=float, default=0.0)
-    p.add_argument("--dir", default=".lymbix_data/classifier_feedback")
+    p.add_argument("--dir", default=".routing_data/classifier_feedback")
     p = add("tokens", "token and cost totals from the token log")
-    p.add_argument("--log", default=".lymbix_data/token_usage.jsonl")
+    p.add_argument("--log", default=".routing_data/token_usage.jsonl")
     p.add_argument("--export", help="write the log as CSV to this path")
     p = add("retries", "retry statistics and alerts")
     p.add_argument("--days", type=int, default=None, help="only attempts from the last N days (default: all; "
                    "attempts recorded by `guard` carry no date and count only without --days)")
-    p.add_argument("--dir", default=".lymbix_data/retry_history")
+    p.add_argument("--dir", default=".routing_data/retry_history")
     a = ap.parse_args(argv)
 
     if a.cmd == "tier":

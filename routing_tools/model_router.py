@@ -1,4 +1,4 @@
-# Copied from the Lymbix project (lymbix/model_router.py, commit d305040, 2026-10-09). Apache-2.0, see LICENSE.
+# Copied from an earlier project by the same author (commit d305040, 2026-10-09). Apache-2.0, see LICENSE.
 # Modified for model-effort-router on 2026-11-25: the two imports are relative to this package. Nothing else is changed.
 """
 Model Router — US-058.

@@ -1,5 +1,5 @@
 """
-Safe file I/O utilities for Lymbix CLI.
+Safe file I/O utilities for command line.
 
 Handles macOS quarantine (com.apple.quarantine) extended attributes
 that cause PermissionError (EPERM / errno 1) on file writes

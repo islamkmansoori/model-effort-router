@@ -1,4 +1,4 @@
-# lymbix/cost_calculator.py
+# cost_calculator.py
 
 def calculate_cost(model_id: str, prompt_tokens: int, completion_tokens: int) -> float:
     """

@@ -1,7 +1,7 @@
-"""Tests for lymbix_tools (the Lymbix modules as a standalone tool). Run: python3 -I tests/test_lymbix_tools.py
+"""Tests for routing_tools (the modules of an earlier project, as a standalone tool). Run: python3 -I tests/test_routing_tools.py
 
 Standard library only. They check that the copied modules work on their own, that the one behaviour change holds
-(no model call and no built-in key unless LYMBIX_LLM_URL is set), and that the benchmark's keyword baseline is
+(no model call and no built-in key unless ROUTING_LLM_URL is set), and that the benchmark's keyword baseline is
 still the same scorer.
 """
 from __future__ import annotations
@@ -21,19 +21,19 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "bench"))
 
 import keyword_tiers  # noqa: E402
-from lymbix_tools import cli  # noqa: E402
-from lymbix_tools import complexity_scorer as cs  # noqa: E402
-from lymbix_tools.classifier_feedback import ClassifierFeedback  # noqa: E402
-from lymbix_tools.complexity_classifier import ComplexityClassifier  # noqa: E402
-from lymbix_tools.config import load_config  # noqa: E402
-from lymbix_tools.cost_calculator import calculate_cost, calculate_savings  # noqa: E402
-from lymbix_tools.llm_guard import LLMGuard  # noqa: E402
-from lymbix_tools.model_router import ModelRouter, ModelTier  # noqa: E402
-from lymbix_tools.prompt_cache import PromptCache  # noqa: E402
-from lymbix_tools.request_classifier import RequestClassifier, RequestType  # noqa: E402
-from lymbix_tools.retry_analytics import RetryAnalytics  # noqa: E402
-from lymbix_tools.routing_authority import RoutingAuthority, RoutingViolationError, lymbix_authorized  # noqa: E402
-from lymbix_tools.token_logger import TokenLogger  # noqa: E402
+from routing_tools import cli  # noqa: E402
+from routing_tools import complexity_scorer as cs  # noqa: E402
+from routing_tools.classifier_feedback import ClassifierFeedback  # noqa: E402
+from routing_tools.complexity_classifier import ComplexityClassifier  # noqa: E402
+from routing_tools.config import load_config  # noqa: E402
+from routing_tools.cost_calculator import calculate_cost, calculate_savings  # noqa: E402
+from routing_tools.llm_guard import LLMGuard  # noqa: E402
+from routing_tools.model_router import ModelRouter, ModelTier  # noqa: E402
+from routing_tools.prompt_cache import PromptCache  # noqa: E402
+from routing_tools.request_classifier import RequestClassifier, RequestType  # noqa: E402
+from routing_tools.retry_analytics import RetryAnalytics  # noqa: E402
+from routing_tools.routing_authority import RoutingAuthority, RoutingViolationError, routing_authorized  # noqa: E402
+from routing_tools.token_logger import TokenLogger  # noqa: E402
 
 failures = 0
 
@@ -63,7 +63,7 @@ def run_cli(*args: str) -> Dict[str, Any]:
 
 
 def main() -> int:
-    tmp = pathlib.Path(tempfile.mkdtemp(prefix="lymbix-tools-"))
+    tmp = pathlib.Path(tempfile.mkdtemp(prefix="routing-tools-"))
 
     print("== complexity scorer")
     scorer = cs.ComplexityScorer()
@@ -77,7 +77,7 @@ def main() -> int:
     check([s["id"] for s in order] == ["s", "h"], "the backlog sort puts simple stories first")
 
     print("== the changed model call (endpoint and key from the environment only)")
-    saved = {k: os.environ.pop(k, None) for k in ("LYMBIX_LLM_URL", "LITELLM_MASTER_KEY", "LYMBIX_LLM_MODEL")}
+    saved = {k: os.environ.pop(k, None) for k in ("ROUTING_LLM_URL", "LITELLM_MASTER_KEY", "ROUTING_LLM_MODEL")}
     seen: List[Any] = []
     real_open = urllib.request.urlopen
 
@@ -97,8 +97,8 @@ def main() -> int:
     try:
         r0 = scorer.score(SIMPLE)
         check(not r0.llm_used and r0.tier.value == "simple" and seen == [],
-              "without LYMBIX_LLM_URL no request is made and the rules decide", r0.to_dict())
-        os.environ["LYMBIX_LLM_URL"] = "http://llm.invalid/v1/chat/completions"
+              "without ROUTING_LLM_URL no request is made and the rules decide", r0.to_dict())
+        os.environ["ROUTING_LLM_URL"] = "http://llm.invalid/v1/chat/completions"
         r1 = scorer.score(SIMPLE)
         req = seen[-1]
         headers = {k.lower(): v for k, v in req.header_items()}
@@ -106,7 +106,7 @@ def main() -> int:
               and "authorization" not in headers, "with an endpoint the model decides, and no key is sent unless one is set",
               (r1.to_dict(), headers))
         os.environ["LITELLM_MASTER_KEY"] = "test-key"
-        os.environ["LYMBIX_LLM_MODEL"] = "my-model"
+        os.environ["ROUTING_LLM_MODEL"] = "my-model"
         scorer.score(SIMPLE)
         req = seen[-1]
         headers = {k.lower(): v for k, v in req.header_items()}
@@ -118,7 +118,7 @@ def main() -> int:
             os.environ.pop(k, None)
             if v is not None:
                 os.environ[k] = v
-    src = (ROOT / "lymbix_tools" / "complexity_scorer.py").read_text(encoding="utf-8")
+    src = (ROOT / "routing_tools" / "complexity_scorer.py").read_text(encoding="utf-8")
     check("sk-" not in src and "localhost" not in src, "the copied scorer carries no built-in key or host")
 
     print("== the benchmark baseline is the same scorer")
@@ -126,7 +126,7 @@ def main() -> int:
              "Optimize the search algorithm and add a redis cache with kafka events for the api endpoint."]
     same = all(keyword_tiers.tier(t)[0] == scorer._rule_score(t).tier.value
                and abs(keyword_tiers.tier(t)[1] - scorer._rule_score(t).rule_score) < 0.002 for t in texts)
-    check(same, "bench/keyword_tiers.py gives the same tier and score as the Lymbix scorer")
+    check(same, "bench/keyword_tiers.py gives the same tier and score as the scorer of the earlier project")
 
     print("== request classifier and model router")
     rc = RequestClassifier()
@@ -148,9 +148,9 @@ def main() -> int:
     check(ModelRouter({"force_model_tier": "premium"}).route("Fix typo")[0] == ModelTier.PREMIUM, "a forced tier wins")
     check(ComplexityClassifier().classify("small change").value == "LIGHT"
           and ComplexityClassifier().classify("refactor the importer", ["a", "b"]).value == "HEAVY", "the quick heuristic: light and heavy")
-    check(load_config(tmp) == {}, "the stand-in config is empty without a lymbix_tools.json")
-    (tmp / "lymbix_tools.json").write_text('{"force_model_tier": "fast"}', encoding="utf-8")
-    check(load_config(tmp) == {"force_model_tier": "fast"}, "and reads lymbix_tools.json when it exists")
+    check(load_config(tmp) == {}, "the stand-in config is empty without a routing_tools.json")
+    (tmp / "routing_tools.json").write_text('{"force_model_tier": "fast"}', encoding="utf-8")
+    check(load_config(tmp) == {"force_model_tier": "fast"}, "and reads routing_tools.json when it exists")
 
     print("== guard, feedback, authority, cost")
     guard = LLMGuard(str(tmp / "retry_history"))
@@ -166,14 +166,14 @@ def main() -> int:
           and s["categories"]["RC-002"]["avg_cost_usd"] == 0.03, "feedback: precision per category, and low precision flagged", s)
     auth = RoutingAuthority()
     auth.reset()
-    ok = auth.authorize("lymbix.executor", "sonnet", 100)
+    ok = auth.authorize("routing.executor", "sonnet", 100)
     try:
         auth.authorize("other.framework", "opus", 100)
         blocked = False
     except RoutingViolationError:
         blocked = True
 
-    @lymbix_authorized(model="sonnet")
+    @routing_authorized(model="sonnet")
     def call() -> str:
         return "done"
 

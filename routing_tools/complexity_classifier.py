@@ -1,5 +1,5 @@
 """
-Heuristic Complexity Classifier for Lymbix.
+Heuristic Complexity Classifier.
 Determines Model Tier (LIGHT/MEDIUM/HEAVY) without calling an external LLM.
 Implements US-013 requirements.
 """

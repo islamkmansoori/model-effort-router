@@ -1,5 +1,5 @@
 """
-Token Logger for Lymbix CLI.
+Token Logger for command line.
 Structured per-request logging of token usage, cost, and cache hits.
 Data stored in JSONL format for easy analysis.
 
@@ -52,7 +52,7 @@ class TokenLogger:
 
     def __init__(
         self,
-        log_file: str = ".lymbix_data/token_usage.jsonl",
+        log_file: str = ".routing_data/token_usage.jsonl",
         pricing: Optional[Dict[str, float]] = None,
         budget: Optional[Dict[str, float]] = None,
     ):
@@ -114,7 +114,7 @@ class TokenLogger:
             input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens
         )
         
-        # Lymbix-EPIC-006: Local LLM tier is always zero-cost
+        # EPIC-006: Local LLM tier is always zero-cost
         if request_type == "call_local":
             cost = 0.0
 
@@ -372,7 +372,7 @@ class TokenLogger:
                 # Try direct model key first (for non-antigravity integrations)
                 model = entry["metadata"].get("model") or "unknown"
                 
-                # If still unknown, check Lymbix attempt structure
+                # If still unknown, check the attempt structure
                 if model == "unknown" and "attempts" in entry["metadata"]:
                     attempts = entry["metadata"]["attempts"]
                     if attempts and isinstance(attempts, list) and len(attempts) > 0:
@@ -546,7 +546,7 @@ class TokenLogger:
 
     # ── Export ─────────────────────────────────────────────────────────────
 
-    def export_csv(self, output_path: str = ".lymbix_data/token_usage.csv") -> str:
+    def export_csv(self, output_path: str = ".routing_data/token_usage.csv") -> str:
         """Export token usage to CSV."""
         import csv
 

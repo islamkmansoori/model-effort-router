@@ -4,7 +4,7 @@
 
 **What this measures.** How much cheaper the project ran because its sessions and subagents used a mix of models (mostly Sonnet 5.5, some Opus 5.5, Haiku 5.5 for background work, and Fable 5.2 for some planning), compared with the same tokens all on Opus 5.5.
 
-**What it does not measure.** The router's own contribution. On this machine the router went live only on the last day; until then, models were chosen by hand or by Claude Code's defaults. The router automates exactly this choice, so this is the size of the prize it competes for. Worker sessions on a second machine, where the router chose every model from day 18, are not included yet; their figures will be added here when collected.
+**What it does not measure.** The router's own contribution. The plugin was never enabled in the Claude Code on this machine, so the hook never chose a model here: every model in the table was chosen by hand or by Claude Code's defaults. The 29% is the size of the prize the router competes for, not its result. The second machine (a Windows PC running worker sessions) chose its models with the project's own chooser, a separate script, not with this plugin; its figures are not yet collected.
 
 ## Result
 
@@ -33,6 +33,20 @@ Same tokens on the baseline assumes the baseline model would have used the same 
 - **Sonnet did most of the work.** 67% of subagent replies ran on Sonnet 5.5, at half Opus's price per token.
 - **Choosing the expensive model costs too.** Fable 5.2 replies cost more than the same tokens on Opus 5.5 would have; a router has to justify the top rung, not only the bottom one.
 - **This project ran on a subscription.** These are API-list-price equivalents for comparison, not an invoice.
+
+## The router's first two days on this machine (24–25 November)
+
+The same command, for 24 and 25 November only, excluding the session that built the router:
+
+| Who | Replies | Estimated cost | Same tokens on the baseline |
+|---|---|---|---|
+| Subagents | 173 | $15.07 | $14.13 (the router's costs $0.94 more, 7%) |
+| Main sessions | 637 | $91.82 | $117.27 (saved 22%) |
+| All | 810 | $106.89 | $131.39 (saved 19%) |
+
+**These figures do not measure the router.** The hook log that the plugin writes (`router.py audit`) does not exist on this machine, so no subagent was routed by it. The subagent models above were whatever the sessions used: mostly Fable 5.2 and Haiku 5.5, neither of which is on the router's ladder. The main-session saving came from choices made by hand. Two days and a few hundred replies are also too few to judge anything.
+
+The router's own effect needs a machine where the plugin is enabled, and `router.py audit` run there first, to show that the hook routed subagents. Only then does `savings` measure something the router did.
 
 ## Measure your own
 

@@ -1,5 +1,5 @@
 """
-Prompt Cache for Lymbix CLI.
+Prompt Cache for command line.
 Caches repeated prompt contexts (system prompts, project structure)
 to avoid re-sending them every request.
 
@@ -48,7 +48,7 @@ class PromptCache:
 
     def __init__(
         self,
-        cache_dir: str = ".lymbix_data/prompt_cache",
+        cache_dir: str = ".routing_data/prompt_cache",
         ttl: int = 86400,
         max_size: int = 100,
     ):

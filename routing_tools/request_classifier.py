@@ -1,10 +1,10 @@
 """
-Request Classifier for Lymbix CLI.
+Request Classifier for command line.
 Routes requests to LLM or local tools based on pattern matching.
 Saves tokens by ensuring deterministic tasks never reach the LLM.
 
 Implements: US-055 (Build Request Classifier)
-Implements: Lymbix-RC-001 through Lymbix-RC-006 (BRD Version 1.0)
+Implements: RC-001 through RC-006 (BRD Version 1.0)
 """
 
 import json
@@ -202,7 +202,7 @@ class RequestClassifier:
     def __init__(self, confidence_threshold: float = 0.75):
         self._history: List[Dict] = []
         self.confidence_threshold = confidence_threshold
-        self.model_version = "lymbix-classifier-v1.0"
+        self.model_version = "routing-classifier-v1.0"
 
     # --- V1 LEGACY IMPLEMENTATION ---
 
@@ -239,8 +239,8 @@ class RequestClassifier:
 
     def get_tool_command(self, request_type: RequestType) -> str:
         tool_map = {
-            RequestType.TOOL_LINTING: "ruff check . || pylint lymbix",
-            RequestType.TOOL_TESTING: "pytest --cov=lymbix tests/",
+            RequestType.TOOL_LINTING: "ruff check . || pylint routing_tools",
+            RequestType.TOOL_TESTING: "pytest --cov=routing_tools tests/",
             RequestType.TOOL_DIFF: "git diff HEAD",
             RequestType.TOOL_GIT: "git status",
             RequestType.TOOL_DOCKER: "docker ps -a",

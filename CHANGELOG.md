@@ -1,8 +1,8 @@
 # Changelog
 
 ## 0.6.0
-- `lymbix_tools/`: the original routing and token-optimisation modules of Lymbix (complexity scorer, request classifier, model router, routing authority, classifier feedback, loop guard, token logger, retry analytics, prompt cache), published as a standalone tool with a command line. Apache-2.0; the rest of the repository stays MIT. One behaviour change: the scorer's optional model call takes its endpoint and key from the environment only, and no default key is shipped.
-- A test keeps `bench/keyword_tiers.py` identical to the Lymbix scorer.
+- `routing_tools/`: the routing and token-optimisation modules of an earlier project by the same author (complexity scorer, request classifier, model router, routing authority, classifier feedback, loop guard, token logger, retry analytics, prompt cache), published as a standalone tool with a command line. Apache-2.0; the rest of the repository stays MIT. One behaviour change: the scorer's optional model call takes its endpoint and key from the environment only, and no default key is shipped.
+- A test keeps `bench/keyword_tiers.py` identical to the scorer of that earlier project.
 
 ## 0.5.0
 Mechanisms from an earlier agent-orchestration project by the same author, rebuilt without dependencies, and one fix the benchmark asked for.

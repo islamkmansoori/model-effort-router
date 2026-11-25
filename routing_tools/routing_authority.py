@@ -1,7 +1,7 @@
 """
 US-108: Routing Authority Lock
-Ensures Lymbix Model Selector remains the FINAL authority for all LLM calls.
-Blocks all attempts to bypass Lymbix routing and logs every intercept.
+Ensures model selector remains the FINAL authority for all LLM calls.
+Blocks all attempts to bypass routing and logs every intercept.
 """
 import functools
 import json
@@ -10,7 +10,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 
 class RoutingViolationError(Exception):
-    """Raised when an external framework attempts to bypass Lymbix routing."""
+    """Raised when an external framework attempts to bypass routing."""
     pass
 
 
@@ -21,7 +21,7 @@ class RoutingAuthority:
     Override attempts are blocked and audit-logged.
     """
     _instance = None
-    AUTHORITY_TOKEN = "Lymbix-ROUTING-AUTHORITY-v1"
+    AUTHORITY_TOKEN = "ROUTING-AUTHORITY-v1"
 
     def __new__(cls):
         if cls._instance is None:
@@ -36,19 +36,19 @@ class RoutingAuthority:
         Authorize an LLM call. Must be called before any provider invocation.
         Returns an authorization token if approved.
         """
-        if not caller.startswith("lymbix."):
+        if not caller.startswith("routing."):
             self._blocked_attempts += 1
             event = {
                 "timestamp": time.time(),
                 "event": "BLOCKED",
                 "caller": caller,
                 "model": model,
-                "reason": "caller not in Lymbix namespace"
+                "reason": "caller not in routing namespace"
             }
             self._audit_log.append(event)
             raise RoutingViolationError(
-                f"[US-108] Lymbix Routing Authority: Blocked '{caller}'. "
-                f"Only 'lymbix.*' modules may invoke LLM providers."
+                f"[US-108] Routing Authority: Blocked '{caller}'. "
+                f"Only 'routing.*' modules may invoke LLM providers."
             )
 
         self._approved_calls += 1
@@ -84,15 +84,15 @@ class RoutingAuthority:
         self._approved_calls = 0
 
 
-def lymbix_authorized(model: str = "default"):
+def routing_authorized(model: str = "default"):
     """
-    Decorator: marks a function as Lymbix-authorized for LLM calls.
+    Decorator: marks a function as routing-authorized for LLM calls.
     Automatically calls authorize() using the module's qualified name.
     """
     def decorator(fn: Callable) -> Callable:
         @functools.wraps(fn)
         def wrapper(*args, **kwargs):
-            caller = f"lymbix.{fn.__module__}.{fn.__qualname__}"
+            caller = f"routing.{fn.__module__}.{fn.__qualname__}"
             authority = RoutingAuthority()
             authority.authorize(caller, model, payload_tokens=0)
             return fn(*args, **kwargs)
@@ -113,8 +113,8 @@ class RoutingLockMiddleware:
         """Wrap an executor function with routing authority enforcement."""
         @functools.wraps(executor_fn)
         def secured(*args, **kwargs):
-            # Check the caller is Lymbix-namespaced
-            caller = f"lymbix.secured.{executor_fn.__name__}"
+            # Check the caller is routing-namespaced
+            caller = f"routing.secured.{executor_fn.__name__}"
             try:
                 self.authority.authorize(caller, "wrapped", payload_tokens=0)
             except RoutingViolationError as e:

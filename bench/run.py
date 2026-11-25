@@ -530,7 +530,7 @@ def report() -> int:
         lines.append(f"| {name} | {v['solved']}/{len(ids)} | ${v['cost']:.2f} | {per} |")
     lines += ["", "Router costs include the assessor's own model call. Climb on failure = if the chosen rung fails, run the "
               "next one up, paying for every attempt; jump = go straight to the next model. Keyword tiers is a "
-              "the four-tier keyword scorer of Lymbix, an earlier project by the same author (`bench/keyword_tiers.py`).", "",
+              "the four-tier keyword scorer of an earlier project by the same author (`bench/keyword_tiers.py`).", "",
               "## Each task", "", "| Task | Difficulty | Router chose (rules / assessor) | " + " | ".join(f"{m} {e}" for m, e in LADDER) + " |",
               "|---|---|---|" + "---|" * len(LADDER)]
     for i in ids:

@@ -1,5 +1,5 @@
 """
-lymbix/classifier_feedback.py — BRN-002: Request Classifier Feedback Loop
+classifier_feedback.py — BRN-002: Request Classifier Feedback Loop
 
 Tracks every classification decision along with the eventual story outcome
 (DONE/FAILED). Over time this builds a picture of classifier precision per
@@ -29,7 +29,7 @@ from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_LOG_DIR = Path(".lymbix_data/classifier_feedback")
+DEFAULT_LOG_DIR = Path(".routing_data/classifier_feedback")
 
 
 class ClassifierFeedback:

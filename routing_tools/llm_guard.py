@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 class LLMGuard:
-    def __init__(self, history_dir=".lymbix_data/retry_history"):
+    def __init__(self, history_dir=".routing_data/retry_history"):
         self.history_dir = Path(history_dir)
         try:
             self.history_dir.mkdir(parents=True, exist_ok=True)
