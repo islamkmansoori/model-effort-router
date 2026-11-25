@@ -1,6 +1,6 @@
 {
   "name": "model-effort-router",
-  "description": "Choose the Claude model and effort for each task and subagent automatically, with a public benchmark.",
+  "description": "Choose the Claude model and effort for each task and subagent, explain failures, cap spend, and check the rules on a public SWE-bench benchmark.",
   "owner": {
     "name": "Islam Mansoori"
   },
@@ -8,7 +8,7 @@
     {
       "name": "model-effort-router",
       "source": "./",
-      "description": "Choose the Claude model and effort for each task from the task file, and learn from outcomes."
+      "description": "Choose the Claude model and effort for each task and subagent, decide whether a failure needs a stronger model, and track spend."
     }
   ]
 }
