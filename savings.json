@@ -1,0 +1,24 @@
+{
+ "format": 1,
+ "total": {
+  "reports": 0,
+  "people": 0,
+  "days": 0,
+  "replies": 0,
+  "tokens": 0,
+  "cost_usd": 0,
+  "baseline_usd": 0,
+  "saved_usd": 0,
+  "routed": {
+   "subagents": 0,
+   "replies": 0,
+   "tokens": 0,
+   "cost_usd": 0,
+   "parent_usd": 0,
+   "saved_usd": 0
+  }
+ },
+ "models": {},
+ "counted": [],
+ "left_out": []
+}
