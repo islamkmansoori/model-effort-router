@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.0
+Nothing left to do by hand: a team installs nothing, a missing Python is reported, updates can be automatic, releases publish themselves.
+- `share`: puts a copy of the router into a project (`.claude/model-effort-router/`) and its two hooks into `.claude/settings.json`. Once committed, everyone who starts Claude Code in the project is routed with no plugin to install, in headless runs and CI too. Checked live from a clean project. `share` again updates the copy; `share --remove` takes it out.
+- In a project that carries its own copy, the plugin's hook stays silent, so no subagent is routed or logged twice. Checked live with both present: one routing per subagent.
+- A session-start check says in one line when no Python 3.9 or later is on the machine. Until now the router simply did nothing there.
+- The hooks try `python3`, `python` and the Windows `py` launcher in turn, and never fail the session when none works. The Windows path is not tested here.
+- `status` adds three lines: whether the project carries its own copy, whether updates are automatic or by hand, and which Python runs it.
+- Automatic updates are documented as the one setting they are (`"autoUpdate": true` on the marketplace). The plugin does not switch it on by itself.
+- Releases publish themselves: after the tests pass on main, CI tags the version in `plugin.json` and publishes its release with this file's section as the notes.
+
 ## 0.7.0
 Plug and play: one line to install, nothing to set up.
 - Install is one terminal line: `claude plugin install model-effort-router --marketplace islamkmansoori/model-effort-router`. Checked from a clean project: the first subagent of the next session was routed with no other step.

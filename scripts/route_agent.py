@@ -8,7 +8,11 @@ or when the call is skipped, it prints nothing and exits 0, and Claude Code goes
 Skipped: hook disabled in the config, a subagent type in `hook.skip_agent_types`, or (with `respect_explicit`)
 a call that already names its model or effort. Every decision is appended to `hook.runs_log` (JSON lines), which
 `router.py audit` reads back; when that file is first created inside a git repository, its name is added to
-`.git/info/exclude` so that it is never committed by accident (`keep_run_data_out_of_git`). With `budget.throttle` on, first attempts of ordinary tasks are capped once today's
+`.git/info/exclude` so that it is never committed by accident (`keep_run_data_out_of_git`).
+
+The same file runs in two places: from the plugin, and from a project that carries its own copy (written by
+`router.py share`, so that a whole team is routed with nothing to install). When a project has its own copy, the
+plugin's hook stays silent there, so no subagent is routed or logged twice. With `budget.throttle` on, first attempts of ordinary tasks are capped once today's
 spend passes the throttle point; with `mechanical.enabled`, tasks that only run a tool go to the cheapest rung.
 """
 from __future__ import annotations
@@ -63,6 +67,10 @@ def main() -> int:
     try:
         event = json.loads(sys.stdin.read() or "{}")
         cwd = pathlib.Path(event.get("cwd") or ".")
+        own = router.shared_root()          # set when this file is a project's own copy (see `router.py share`)
+        if own is None and router.project_copy(cwd) is not None:
+            return 0                        # the project carries its own copy: that one routes, this one stays silent
+        cwd = own or cwd                    # a project's copy keeps its rules and its log at the project's root
         cfg = router.load_config(cwd / router.PROJECT_CONFIG)
         ans = decide(event, cfg, cwd)
         if ans is None:

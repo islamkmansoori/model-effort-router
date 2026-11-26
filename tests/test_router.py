@@ -473,7 +473,7 @@ def main() -> int:
     st = "\n".join(lines)
     check(fine and router.VERSION in lines[0] and "Rules: built in" in st and "Hook: on" in st
           and "sonnet/medium" in st and "no subagent seen here yet" in st and "/reload-plugins" in st
-          and "Team:" not in st, "status on a fresh project: built-in rules, hook on, nothing routed yet", st)
+          and "Team: only your own install" in st, "status on a fresh project: built-in rules, hook on, nothing routed yet", st)
     (sp / ".claude").mkdir()
     (sp / ".claude" / "model-router-runs.jsonl").write_text("\n".join(json.dumps(x) for x in [
         {"time": "2026-11-26T10:00:00", "action": "routed", "model": "sonnet", "effort": "medium"},
@@ -484,7 +484,7 @@ def main() -> int:
     lines, fine = router.status(sp, CFG, env={})
     st = "\n".join(lines)
     check(fine and "Working: yes" in st and "seen 3 subagent start(s)" in st and "chose the model for 2" in st
-          and "last on 2026-11-27" in st and "this project's own" in st and "Team:" in st,
+          and "last on 2026-11-27" in st and "this project's own" in st,
           "status with a hook log: counts what was seen and routed, names the project's rules and settings", st)
     lines, fine = router.status(sp, CFG, env={"CLAUDE_CODE_EFFORT_LEVEL": "low"})
     check(not fine and "WARNING" in "\n".join(lines) and "CLAUDE_CODE_EFFORT_LEVEL" in "\n".join(lines),
@@ -494,7 +494,7 @@ def main() -> int:
     check(not fine and "Hook: OFF" in "\n".join(lines) and "Budget: daily $20" in "\n".join(lines),
           "status fails when the hook is switched off, and names a budget that is set", lines)
     (sp / ".claude" / "settings.json").write_text("{broken", encoding="utf-8")
-    check("Team:" not in "\n".join(router.status(sp, CFG, env={})[0]), "a broken settings file does not break status")
+    check("Team: only your own install" in "\n".join(router.status(sp, CFG, env={})[0]), "a broken settings file does not break status")
 
     nogit = pathlib.Path(tempfile.mkdtemp(prefix="nogit-"))
     check(router.keep_out_of_git(nogit, ["model-router-runs.jsonl"]) is False and not list(nogit.iterdir()),
@@ -585,6 +585,103 @@ def main() -> int:
         code = router.main(["--config", str(pf), "status"])
     check(code == 2 and "not valid JSON" in buf.getvalue() and "not routed" in buf.getvalue(),
           "and status says so plainly instead of a traceback", buf.getvalue())
+
+    print("== share: a project carries its own copy, so a team installs nothing")
+    import shutil
+    team = pathlib.Path(tempfile.mkdtemp(prefix="team-"))
+    (team / ".claude").mkdir()
+    keep = {"permissions": {"deny": ["Read(secret/**)"]},
+            "hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "echo mine"}]}]}}
+    (team / ".claude" / "settings.json").write_text(json.dumps(keep), encoding="utf-8")
+    ok, said1 = router.share(team)
+    st1 = json.loads((team / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    copy_dir = team / ".claude" / "model-effort-router"
+    route_cmds = [h["command"] for g in st1["hooks"]["PreToolUse"] for h in g["hooks"]]
+    check(ok and all((copy_dir / f).is_file() for f in router.SHARED_FILES) and (copy_dir / ".gitignore").read_text() == "__pycache__/\n"
+          and router.VERSION in (copy_dir / "README.md").read_text(encoding="utf-8")
+          and st1["permissions"] == keep["permissions"] and "echo mine" in route_cmds
+          and sum(router.SHARED_MARK in c for c in route_cmds) == 1
+          and '"${CLAUDE_PROJECT_DIR}/' + router.SHARED_MARK + '"' in "".join(route_cmds)
+          and st1["hooks"]["SessionStart"][0]["matcher"] == "startup" and "git add" in "\n".join(said1),
+          "share copies the router into the project and adds its two hooks, keeping the settings that were there", said1)
+    ok2, said2 = router.share(team)
+    st2 = json.loads((team / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    check(ok2 and st2 == st1, "running share again changes nothing")
+    check(router.shared_version(team) == router.VERSION and router.project_copy(team, {}) == team
+          and router.project_copy(pathlib.Path(tempfile.mkdtemp()), {}) is None
+          and router.project_copy(team / "pkg", {"CLAUDE_PROJECT_DIR": str(team)}) == team
+          and router.project_copy(team, {"CLAUDE_PROJECT_DIR": str(team / "pkg")}) is None
+          and router.project_copy(team / "pkg" / "deep", {}) is None,
+          "a project's copy counts only when the session started in the project's root: only then do its hooks run")
+    check(router.shared_root(copy_dir / "scripts") == team.resolve() and router.shared_root(ROOT / "scripts") is None,
+          "a copy knows the project it lives in; the plugin's own files do not look like one")
+    ev4 = {"tool_name": "Agent", "cwd": str(team), "session_id": "s",
+           "tool_input": {"description": "Fix a typo", "prompt": "Fix the typo in the README.", "subagent_type": "general-purpose"}}
+    saved_env = os.environ.pop("CLAUDE_PROJECT_DIR", None)
+    try:
+        check(run_hook(ev4) == "" and not (team / ".claude" / "model-router-runs.jsonl").exists(),
+              "the plugin's hook stays silent in a project that carries its own copy: nothing is routed twice")
+        os.environ["CLAUDE_PROJECT_DIR"] = str(team / "pkg")
+        sub_ev = {**ev4, "cwd": str(team / "pkg")}
+        check('"model"' in run_hook(sub_ev) and (team / "pkg" / ".claude" / "model-router-runs.jsonl").exists(),
+              "a session started in a subfolder does not run the project's hooks, so the plugin routes it")
+        shutil.rmtree(team / "pkg")
+    finally:
+        os.environ.pop("CLAUDE_PROJECT_DIR", None)
+        if saved_env is not None:
+            os.environ["CLAUDE_PROJECT_DIR"] = saved_env
+    got = subprocess.run([sys.executable, str(copy_dir / "scripts" / "route_agent.py")], capture_output=True, text=True,
+                         input=json.dumps({**ev4, "cwd": str(team / "pkg")}))
+    rows4 = (team / ".claude" / "model-router-runs.jsonl").read_text(encoding="utf-8").splitlines()
+    check('"model": "sonnet"' in got.stdout and len(rows4) == 1 and not (team / "pkg").exists(),
+          "the project's copy routes, and keeps its log at the project's root even when the session is in a subfolder", got.stdout + got.stderr)
+    cmds = router.hook_commands("${CLAUDE_PLUGIN_ROOT}/scripts/route_agent.py")
+    shipped = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]
+    check(shipped["PreToolUse"][0]["hooks"][0]["command"] == cmds["route"] and shipped["PreToolUse"][0]["matcher"] == "Agent"
+          and shipped["SessionStart"][0]["hooks"][0]["command"] == cmds["check"],
+          "the plugin's hooks.json holds the same two commands that share writes")
+    sh = shutil.which("sh")
+    if sh and os.name != "nt":   # the hook commands are shell commands; on Windows they run in Git Bash (not tested here)
+        fake = pathlib.Path(tempfile.mkdtemp(prefix="nopy-"))
+        quiet = subprocess.run([sh, "-c", cmds["check"]], capture_output=True, text=True)
+        loud = subprocess.run([sh, "-c", cmds["check"]], capture_output=True, text=True, env={"PATH": str(fake)})
+        check(quiet.stdout == "" and quiet.returncode == 0, "with Python there, the session-start check says nothing", quiet.stdout + quiet.stderr)
+        check(json.loads(loud.stdout or "{}").get("systemMessage") == router.NO_PYTHON and loud.returncode == 0,
+              "without any Python, the check tells the user in one line that nothing is being routed", loud.stdout + loud.stderr)
+        silent = subprocess.run([sh, "-c", cmds["route"].replace("${CLAUDE_PLUGIN_ROOT}", str(ROOT))], capture_output=True,
+                                text=True, env={"PATH": str(fake)}, input=json.dumps(ev4))
+        check(silent.returncode == 0 and silent.stdout == "", "without any Python, the routing hook does nothing and does not fail the session")
+        routed = subprocess.run([sh, "-c", cmds["route"].replace("${CLAUDE_PLUGIN_ROOT}", str(ROOT))], capture_output=True, text=True,
+                                input=json.dumps({**ev4, "cwd": tempfile.mkdtemp(prefix="plain-")}))
+        check(routed.returncode == 0 and routed.stdout.count('"hookSpecificOutput"') == 1,
+              "the routing command runs the router once under the first Python that works", routed.stdout[:300] + routed.stderr)
+    (team / ".claude" / "settings.json").write_text("{broken", encoding="utf-8")
+    bad_ok, bad_said = router.share(team)
+    check(not bad_ok and "was not changed" in bad_said[0] and (team / ".claude" / "settings.json").read_text() == "{broken",
+          "a settings file that is not valid JSON is left alone")
+    (team / ".claude" / "settings.json").write_text(json.dumps(st1), encoding="utf-8")
+    rm_ok, rm_said = router.share(team, remove=True)
+    st3 = json.loads((team / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    check(rm_ok and not copy_dir.exists() and st3 == keep and "Removed" in rm_said[0],
+          "share --remove takes the copy and its hooks out and leaves the other settings as they were", st3)
+    check("nothing to remove" in router.share(team, remove=True)[1][0], "removing twice says there is nothing to remove")
+    fresh = pathlib.Path(tempfile.mkdtemp(prefix="fresh-"))
+    check(router.share(fresh)[0] and list(json.loads((fresh / ".claude" / "settings.json").read_text())) == ["hooks"],
+          "share works in a project that has no .claude folder yet")
+    check(not router.share(fresh, source=fresh / ".claude" / "model-effort-router")[0], "the project's own copy cannot share onto itself")
+
+    print("== updates and Python in the status screen")
+    au_home, au_proj = pathlib.Path(tempfile.mkdtemp(prefix="home-")), pathlib.Path(tempfile.mkdtemp(prefix="proj-"))
+    check(router.auto_update(au_proj, au_home) is None, "no settings file declares the marketplace: nothing to say about updates")
+    (au_home / ".claude").mkdir()
+    (au_home / ".claude" / "settings.json").write_text(json.dumps({"extraKnownMarketplaces": {router.MARKETPLACE: {"source": {}}}}), encoding="utf-8")
+    check(router.auto_update(au_proj, au_home) is False, "declared without autoUpdate: updates are by hand")
+    (au_proj / ".claude").mkdir()
+    (au_proj / ".claude" / "settings.json").write_text(json.dumps({"extraKnownMarketplaces": {router.MARKETPLACE: {"source": {}, "autoUpdate": True}}}), encoding="utf-8")
+    check(router.auto_update(au_proj, au_home) is True, "autoUpdate true in the project's settings: updates are automatic")
+    sl = "\n".join(router.status(fresh, CFG, env={})[0])
+    check("Team: this project carries its own copy (" + router.VERSION + ")" in sl and "- Python: " in sl,
+          "status names the project's own copy and the Python it runs on", sl)
 
     with contextlib.redirect_stdout(io.StringIO()) as buf:
         code = router.main(["status"])

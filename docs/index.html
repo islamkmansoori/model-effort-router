@@ -23,7 +23,7 @@
   "programmingLanguage": "Python",
   "runtimePlatform": "Claude Code",
   "license": "https://opensource.org/licenses/MIT",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "author": {"@type": "Person", "name": "Islam Mansoori"},
   "keywords": "Claude Code, plugin, subagents, model selection, reasoning effort, LLM routing, cost, SWE-bench"
 }
@@ -70,6 +70,7 @@ th, td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; whi
 <p>One line in a terminal:</p>
 <pre><code>claude plugin install model-effort-router --marketplace islamkmansoori/model-effort-router</code></pre>
 <p>That is the whole setup. Every subagent Claude starts is routed from then on with the built-in rules; there is nothing to configure and nothing to run. To check, ask Claude "is the model router working?". To route a task by hand: <code>/model-effort-router:route-task &lt;file | owner/repo#123 | "prompt"&gt;</code>.</p>
+<p>For a whole team, with nothing to install: ask Claude to "share the model router with everyone on this project" and commit what it writes (<code>.claude/model-effort-router/</code> and <code>.claude/settings.json</code>). Everyone who starts Claude Code in the project is then routed.</p>
 <p>From inside Claude Code instead:</p>
 <pre><code>/plugin marketplace add islamkmansoori/model-effort-router
 /plugin install model-effort-router@model-effort-router</code></pre>

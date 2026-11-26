@@ -1,6 +1,6 @@
 ---
 name: route-task
-description: Choose the Claude model and effort for a task before handing it to a subagent or a separate worker session, decide what to do when a worker fails, and record how it went. Use when delegating a task written in a file (a story, an issue, a work packet), a GitHub issue or a plain prompt; when a worker or its tests fail and you must decide between retrying, a stronger model, fixing the environment or asking a person; when a task is finished; or when the user asks which model or effort a task should run on, whether the router is working, what it chose, or how much is being spent.
+description: Choose the Claude model and effort for a task before handing it to a subagent or a separate worker session, decide what to do when a worker fails, and record how it went. Use when delegating a task written in a file (a story, an issue, a work packet), a GitHub issue or a plain prompt; when a worker or its tests fail and you must decide between retrying, a stronger model, fixing the environment or asking a person; when a task is finished; or when the user asks which model or effort a task should run on, whether the router is working, what it chose, or how much is being spent; or when the user wants the whole team or project to get the router without installing it, or wants its updates to be automatic.
 argument-hint: "[task file | owner/repo#123 | \"prompt\"]"
 ---
 
@@ -48,7 +48,7 @@ A warning means what ran differs from what was chosen: run `check-env` on that m
 
 ## When the user asks whether the router is working, what it is doing or what it costs
 
-- `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/router.py" status`: one screen. Whether the hook is on, which rules are in use, whether a setting on this machine overrides the choice, and how many subagents it has routed in this project. Run this first, and read its lines to the user as they are. Exit 1 means the hook is off or something overrides it.
+- `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/router.py" status`: one screen. Whether the hook is on, which rules are in use, whether a setting on this machine overrides the choice, and how many subagents it has routed in this project. Run this first, and read its lines to the user as they are (it also says whether the project carries its own copy, how updates arrive, and which Python runs it). Exit 1 means the hook is off or something overrides it.
 - `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/router.py" audit`: how many subagent starts the hook routed, kept as the caller set them, skipped or capped.
 - `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/router.py" budget`: API-equivalent spend today, this week and this month against the limits in the config (exit 1 when one is passed).
 - `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/router.py" savings --since <YYYY-MM-DD>`: what the mix of models saved against running everything on the baseline model.
@@ -59,9 +59,10 @@ Nothing has to be set up: the built-in rules apply as soon as the plugin is inst
 
 Only when the user wants their own rules: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/router.py" init` writes `.claude/model-router.json`. Edit it to the project's words: the critical and risk `paths` (globs such as `src/billing/*`), the signals, the labels, and the ladder.
 
-To give the plugin to everyone on the project, the user runs these two commands in the project folder and commits `.claude/settings.json`; each teammate then installs it once with the second command:
+## When the user wants everyone on the project to have it
 
-```
-claude plugin marketplace add islamkmansoori/model-effort-router --scope project
-claude plugin install model-effort-router@model-effort-router --scope project
-```
+`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/router.py" share` (run it in the folder people start Claude Code in). It puts a copy of the router into `.claude/model-effort-router/` and two hooks into `.claude/settings.json`, and prints the `git add` line. Tell the user to commit both: from then on everyone who starts Claude Code in the project is routed, with no plugin to install. Do not commit for them unless they ask. In such a project this plugin's own hook stays silent, so nothing is routed twice. `share` again from a newer version updates the copy; `share --remove` takes it out.
+
+## When the user wants updates to arrive by themselves
+
+Claude Code keeps automatic updates off for plugins that are not Anthropic's, and this plugin never changes that by itself. When the user asks for it: find the settings file that declares the marketplace (`extraKnownMarketplaces` with a `model-effort-router` entry; usually `~/.claude/settings.json`, sometimes the project's `.claude/settings.json`) and add `"autoUpdate": true` next to its `source`, changing nothing else in the file. Or tell them the same switch is in `/plugin`, Marketplaces. `status` then shows "Updates: automatic". By hand: `claude plugin update model-effort-router@model-effort-router`.

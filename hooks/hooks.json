@@ -7,8 +7,20 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/route_agent.py\" 2>/dev/null || python \"${CLAUDE_PLUGIN_ROOT}/scripts/route_agent.py\"",
+            "command": "for py in python3 python 'py -3'; do $py \"${CLAUDE_PLUGIN_ROOT}/scripts/route_agent.py\" 2>/dev/null && exit 0; done; exit 0",
             "timeout": 15
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "for py in python3 python 'py -3'; do $py -c 'import sys; sys.exit(sys.version_info < (3, 9))' 2>/dev/null && exit 0; done; echo '{\"systemMessage\": \"model-effort-router: Python 3.9 or later was not found on this machine, so subagents are not being routed. Install Python (python.org) and start a new session.\"}'",
+            "timeout": 10
           }
         ]
       }

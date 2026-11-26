@@ -10,6 +10,9 @@ For AI coding agents and people changing this repository.
 - **Advice does not route.** The readiness check reports; it never changes the model or effort.
 - **New rules need evidence.** `bench/keyword_tiers.py` is a baseline that lost to "start cheap, jump on failure". Before adding a signal that raises the first choice, score it against `bench/results/runs.jsonl`.
 - **The hook must never break a session.** Any error in `route_agent.py` means: print nothing, exit 0.
+- **The hook commands live in one place.** `router.hook_commands()` builds the two shell commands; `hooks/hooks.json` (the plugin) and `share` (a project's own copy) both use them, and a test keeps `hooks/hooks.json` identical. Change the function, then regenerate the file.
+- **A project's copy and the plugin must never both route.** `route_agent.py` stays silent when the session's start folder carries a shared copy. Keep that check when touching the hook.
+- **Releases publish themselves.** Change `version` in `.claude-plugin/plugin.json` (and `VERSION` in `scripts/router.py`, `CITATION.cff`, `docs/index.html`), add the version's section to `CHANGELOG.md`, push to main. CI tags and releases it after the tests pass. Plugin users only receive a change when the version changes.
 - **Plug and play is a promise.** After the one-line install nothing else may be required: no config file, no command to run, no file to add to `.gitignore`. A short project config (one section, one field) has to keep working; `load_config` lays it over the defaults, and a test runs the hook with each short file the README suggests.
 - **Test before you finish.** `python3 -I tests/test_router.py` must print `0 failed`. CI runs it on Linux, macOS and Windows with Python 3.9, 3.12 and 3.13.
 - **Validate the plugin.** `claude plugin validate . --strict` must pass.

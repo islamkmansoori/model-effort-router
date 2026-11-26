@@ -34,42 +34,62 @@ That is the whole setup. There is nothing to configure and nothing to run:
 - **The built-in rules apply** until you write your own. No config file is needed.
 - **Nothing lands in your commits.** The hook keeps a small log in the project (`.claude/model-router-runs.jsonl`) and tells git on your machine to ignore it.
 
-Needs Claude Code and Python 3.9 or later (`python3`, or `python` on Windows). No packages are installed.
+Needs Claude Code and Python 3.9 or later (`python3`, `python`, or the `py` launcher on Windows). No packages are installed. If no Python is found, the router says so in one line when a session starts, instead of quietly doing nothing.
 
 **Check that it works.** Ask Claude "is the model router working?", or type `/model-effort-router:route-task is the router working?`. The answer is one screen:
 
 ```
-model-effort-router 0.7.0
+model-effort-router 0.8.0
 - Rules: built in. Nothing to set up; `init` writes a copy to edit if you want other rules.
 - Hook: on. Subagents get one of: sonnet/medium, sonnet/high, opus/high, opus/xhigh.
 - Left alone: Explore, claude-code-guide, statusline-setup, calls that name their own model or effort.
 - This machine: no setting overrides the choice.
 - Working: yes. The hook has seen 1 subagent start(s) here and chose the model for 1 (sonnet/medium 1); last on 2026-11-26. Details: `audit`.
+- Team: only your own install routes here. `share` puts a copy into the project, so that everyone who opens it is routed with nothing to install.
+- Updates: by hand (`claude plugin update model-effort-router@model-effort-router`). To make them automatic, ask Claude to switch on automatic updates for the router, or use `/plugin`, Marketplaces.
+- Python: 3.12.4.
 ```
 
+### A whole team, with nothing to install
+
+Ask Claude "share the model router with everyone on this project" (it runs `router.py share`), then commit what it wrote:
+
+```
+git add .claude/model-effort-router .claude/settings.json
+git commit -m "Route subagents with model-effort-router"
+```
+
+`share` puts a copy of the router into the project (`.claude/model-effort-router/`, about 90 KB) and two hooks into `.claude/settings.json`. From then on everyone who starts Claude Code in that folder is routed: no plugin, no marketplace, no command. Claude Code asks each person once whether they trust the project, as it does for any project with hooks.
+
+- It also covers headless runs (`claude -p`), CI and every other checkout of the repository, because it travels with the code.
+- The version is the one you committed. It changes only when someone runs `share` again from a newer version, so a team reviews an update like any other change.
+- A person who also has the plugin is not routed twice: in a project with its own copy, the plugin stays silent.
+- A project's settings apply to sessions started in the folder that holds `.claude/`. Start Claude Code there, or run `share` in each folder people start it in.
+- `share --remove` takes the copy and the hooks out again.
+
+### Updates
+
+For your own install, automatic updates are one setting. Ask Claude "switch on automatic updates for the model router", or open `/plugin`, Marketplaces, and switch on auto-update for `model-effort-router`. Either way this line is added next to the marketplace in your Claude Code settings, and Claude Code then refreshes the plugin in the background:
+
+```json
+"extraKnownMarketplaces": {
+  "model-effort-router": {
+    "source": {"source": "github", "repo": "islamkmansoori/model-effort-router"},
+    "autoUpdate": true
+  }
+}
+```
+
+The plugin does not switch this on by itself. Claude Code keeps automatic updates off for plugins that do not come from Anthropic, so that new code never arrives on a machine unasked, and that choice is yours. By hand: `claude plugin update model-effort-router@model-effort-router`.
+
 <details>
-<summary><b>Other ways to install, a whole team, updating, switching off</b></summary>
+<summary><b>Installing from inside Claude Code, switching off, using it without the plugin</b></summary>
 
 **From inside Claude Code** (two steps; the second opens a panel where you confirm):
 
 ```
 /plugin marketplace add islamkmansoori/model-effort-router
 /plugin install model-effort-router@model-effort-router
-```
-
-**For one project and everyone who works on it.** Run these in the project folder and commit `.claude/settings.json`:
-
-```
-claude plugin marketplace add islamkmansoori/model-effort-router --scope project
-claude plugin install model-effort-router@model-effort-router --scope project
-```
-
-The file then names the plugin for the project. Each teammate runs the second command once in their copy.
-
-**Update.** Claude Code does not update plugins from other people's marketplaces by itself unless you switch that on (`/plugin`, Marketplaces). By hand:
-
-```
-claude plugin update model-effort-router@model-effort-router
 ```
 
 **Switch off.** `claude plugin disable model-effort-router@model-effort-router` (or `uninstall`). For one project only, put `{"hook": {"enabled": false}}` in `.claude/model-router.json`. For one subagent, name its model or effort yourself: the hook leaves explicit choices alone.
@@ -180,6 +200,7 @@ python3 scripts/router.py score TASK.md --write --retry 1 --cause worker
 python3 scripts/router.py score TASK.md --write --retry 1 --failure-log out.txt   # the cause is suggested from the output
 python3 scripts/router.py cause out.txt                        # whose failure: worker, environment or task?
 python3 scripts/router.py status                               # one screen: is it on, has it routed anything, does anything override it
+python3 scripts/router.py share                                # put a copy into this project: the whole team is routed, nothing to install
 python3 scripts/router.py check-env                            # anything that would override the choice?
 python3 scripts/router.py audit                                # what the hook did: routed, kept, skipped, capped
 python3 scripts/router.py budget                               # spend against your daily, weekly, monthly limits
@@ -228,6 +249,9 @@ Set `"budget": {"daily": 20, "throttle": true}` in `.claude/model-router.json`. 
 
 **How do I know the router is really choosing my subagents' models?**
 Ask Claude "is the model router working?" (it runs `router.py status`). `router.py audit` gives the detail from the hook's log: how many subagent starts it routed, how many kept a model the caller set, how many were skipped, and whether a machine setting overrode the choice.
+
+**How does my whole team get it without everyone installing a plugin?**
+Run `router.py share` once in the project (or ask Claude to share the router) and commit `.claude/model-effort-router/` and `.claude/settings.json`. Everyone who starts Claude Code in that project is then routed by the project's own copy. Nobody installs or updates anything; the copy changes only when someone commits a newer one.
 
 **Do I have to configure anything, or run something for each task?**
 No. After the one-line install every subagent is routed with the built-in rules. A config file, the `**Critical:**` and `**Risk:**` lines, the budget and the outcome log are all optional; each one makes the choice better informed.

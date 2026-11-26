@@ -38,6 +38,7 @@ import json
 import os
 import pathlib
 import re
+import shutil
 import subprocess
 import sys
 import urllib.request
@@ -48,9 +49,33 @@ DEFAULT_CONFIG = HERE.parent / "config" / "default.json"
 PROJECT_CONFIG = pathlib.Path(".claude") / "model-router.json"
 PROJECT_SETTINGS = pathlib.Path(".claude") / "settings.json"   # Claude Code's own project settings
 PLUGIN_ID = "model-effort-router@model-effort-router"
+# `share` puts a copy of the router into a project, so that everyone who opens the project is routed with nothing
+# to install: these files, and one hook in the project's .claude/settings.json that runs the copy.
+SHARED_DIR = pathlib.Path(".claude") / "model-effort-router"
+SHARED_FILES = ["scripts/router.py", "scripts/route_agent.py", "config/default.json", "LICENSE"]
+SHARED_MARK = ".claude/model-effort-router/scripts/route_agent.py"
+MARKETPLACE = "model-effort-router"
+NEEDS_PYTHON = "import sys; sys.exit(sys.version_info < (3, 9))"
+NO_PYTHON = ("model-effort-router: Python 3.9 or later was not found on this machine, so subagents are not being "
+             "routed. Install Python (python.org) and start a new session.")
+
+
+def hook_commands(script: str) -> Dict[str, str]:
+    """The two shell commands of the hook, for the script at `script` (a path with a ${...} placeholder).
+
+    `route` runs the router under the first Python that works (python3, python, or the Windows launcher) and never
+    fails the session. `check` runs once when a session starts and tells the user, in one line, when no Python
+    3.9 or later is there: without that line the router would simply do nothing."""
+    return {
+        "route": f"for py in python3 python 'py -3'; do $py \"{script}\" 2>/dev/null && exit 0; done; exit 0",
+        "check": f"for py in python3 python 'py -3'; do $py -c '{NEEDS_PYTHON}' 2>/dev/null && exit 0; done; "
+                 "echo '" + json.dumps({"systemMessage": NO_PYTHON}) + "'",
+    }
+
+
 MARK = "**Model and effort (model-effort-router):**"
 CAUSES = ("worker", "environment", "task")   # --cause; "unknown" and "repeat" are set by --failure-log
-VERSION = "0.7.0"
+VERSION = "0.8.0"
 
 # Settings that make Claude Code run on something other than what the router chose (Claude Code docs, Nov 2026).
 OVERRIDES = {
@@ -905,6 +930,145 @@ def keep_out_of_git(cwd: pathlib.Path, names: List[str]) -> bool:
     return True
 
 
+def shared_root(here: pathlib.Path = HERE) -> Optional[pathlib.Path]:
+    """The project this copy of the router is committed in (see `share`), or None for the plugin or a clone."""
+    here = here.resolve()
+    if here.name == "scripts" and here.parent.name == SHARED_DIR.name and here.parent.parent.name == ".claude":
+        return here.parent.parent.parent
+    return None
+
+
+def project_copy(cwd: pathlib.Path, env: Optional[Dict[str, str]] = None) -> Optional[pathlib.Path]:
+    """The project's root, when the project carries its own copy of the router and its settings run it.
+
+    The plugin's hook stays silent in such a project: the project's copy routes, so nothing is routed or logged twice.
+    Claude Code reads a project's settings only from the folder a session was started in (CLAUDE_PROJECT_DIR), so
+    only that folder counts: a session started in a subfolder does not run the project's hooks, and the plugin
+    routes it as usual."""
+    env = os.environ if env is None else env
+    root = pathlib.Path(env.get("CLAUDE_PROJECT_DIR") or cwd)
+    try:
+        if (root / SHARED_MARK).is_file() and SHARED_MARK in (root / PROJECT_SETTINGS).read_text(encoding="utf-8"):
+            return root
+    except OSError:
+        pass
+    return None
+
+
+def shared_version(root: pathlib.Path) -> str:
+    """The version of the copy a project carries, read from its router.py."""
+    try:
+        m = re.search(r'^VERSION = "([^"]+)"', (root / SHARED_DIR / "scripts" / "router.py").read_text(encoding="utf-8"), re.M)
+    except OSError:
+        return ""
+    return m.group(1) if m else ""
+
+
+def share(project: pathlib.Path, remove: bool = False, source: Optional[pathlib.Path] = None) -> Tuple[bool, List[str]]:
+    """Put a copy of the router into a project and switch it on in the project's .claude/settings.json.
+
+    Once both are committed, everyone who opens the project in Claude Code is routed: there is no plugin for them to
+    install and nothing to update. The copy is the version you ran `share` from, and it stays that version until
+    `share` is run again. `remove` takes the copy and the hook out. Other settings are kept; a settings file that is
+    not valid JSON is left alone. Returns (ok, what happened)."""
+    source = source or HERE.parent
+    target, settings = project / SHARED_DIR, project / PROJECT_SETTINGS
+    data: Any = {}
+    if settings.exists():
+        try:
+            data = json.loads(settings.read_text(encoding="utf-8"))
+            if not isinstance(data, dict) or not isinstance(data.get("hooks", {}), dict) or any(
+                    not isinstance(v, list) for v in data.get("hooks", {}).values()):
+                raise ValueError("it is not a JSON object with a `hooks` section of the usual shape")
+        except ValueError as e:
+            return False, [f"{settings} was not changed: {e}. Fix it and run this again."]
+
+    def ours(g: Any) -> bool:
+        return isinstance(g, dict) and any(isinstance(h, dict) and (SHARED_MARK in str(h.get("command", ""))
+                                                                    or NO_PYTHON in str(h.get("command", "")))
+                                           for h in g.get("hooks", []))
+
+    def section(name: str) -> List[Any]:
+        hooks = data.setdefault("hooks", {})
+        if not isinstance(hooks, dict) or not isinstance(hooks.setdefault(name, []), list):
+            raise ValueError("its `hooks` section has an unexpected shape")
+        return hooks[name]
+
+    if remove:
+        hooks = data.get("hooks", {})
+        had_hook = any(ours(g) for groups in hooks.values() for g in groups)
+        had = target.exists() or had_hook
+        if target.exists():
+            shutil.rmtree(target)
+        if had_hook:
+            for name in list(hooks):
+                hooks[name] = [g for g in hooks[name] if not ours(g)]
+                if not hooks[name]:
+                    del hooks[name]
+            if not hooks:
+                del data["hooks"]
+            settings.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        return True, ([f"Removed {SHARED_DIR}/ and its hooks from {PROJECT_SETTINGS}. Commit the change."] if had
+                      else ["This project does not carry a copy of the router: nothing to remove."])
+    if source.resolve() == target.resolve():
+        return False, [f"This is the project's own copy ({SHARED_DIR}/). To update it, run `share` from a newer "
+                       "model-effort-router (the plugin, or a clone of the repository)."]
+    missing = [f for f in SHARED_FILES if not (source / f).is_file()]
+    if missing:
+        return False, [f"Cannot find {missing[0]} next to this script: nothing was copied."]
+    before = shared_version(project)
+    for f in SHARED_FILES:
+        (target / f).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source / f, target / f)
+    (target / ".gitignore").write_text("__pycache__/\n", encoding="utf-8")
+    (target / "README.md").write_text(
+        f"# model-effort-router {VERSION} (this project's copy)\n\n"
+        "This folder was written by `router.py share`. It makes Claude Code choose the model and effort for every\n"
+        "subagent started in this project, for everyone who opens the project, with nothing to install.\n"
+        f"The hooks that run it are in `{PROJECT_SETTINGS.as_posix()}`.\n\n"
+        "- Do not edit these files. This project's own rules go in `.claude/model-router.json`.\n"
+        "- Needs Python 3.9 or later on each machine. Without it the hook does nothing.\n"
+        "- Update: run `share` again from a newer model-effort-router. Remove: `share --remove`.\n"
+        "- Check: `python3 .claude/model-effort-router/scripts/router.py status`\n\n"
+        "Source and licence (MIT): https://github.com/islamkmansoori/model-effort-router\n", encoding="utf-8")
+    cmd = hook_commands("${CLAUDE_PROJECT_DIR}/" + SHARED_MARK)
+    for name, matcher, command, timeout in (("PreToolUse", "Agent", cmd["route"], 15),
+                                            ("SessionStart", "startup", cmd["check"], 10)):
+        groups = section(name)
+        entry = {"matcher": matcher, "hooks": [{"type": "command", "command": command, "timeout": timeout}]}
+        mine = [i for i, g in enumerate(groups) if ours(g)]
+        if mine:
+            groups[mine[0]] = entry
+        else:
+            groups.append(entry)
+    settings.parent.mkdir(parents=True, exist_ok=True)
+    settings.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    did = (f"Updated this project's copy from {before} to {VERSION}." if before and before != VERSION
+           else f"This project's copy is {VERSION}." if before else f"Put model-effort-router {VERSION} into {SHARED_DIR}/.")
+    return True, [did + f" Its hooks are in {PROJECT_SETTINGS}.",
+                  f"Commit both: git add {SHARED_DIR.as_posix()} {PROJECT_SETTINGS.as_posix()}",
+                  "From then on everyone who starts Claude Code in this folder is routed. They install nothing; "
+                  "Claude Code asks them once whether they trust the project, as it does for any project with hooks. "
+                  "Each machine needs Python 3.9 or later."]
+
+
+def auto_update(cwd: pathlib.Path, home: Optional[pathlib.Path] = None) -> Optional[bool]:
+    """Whether Claude Code updates the plugin by itself: `autoUpdate` on the marketplace, in the settings file that
+    declares it (the project's local file first, then the project's, then the user's). None when none declares it."""
+    declared = False
+    for f in (cwd / ".claude" / "settings.local.json", cwd / PROJECT_SETTINGS,
+              (home or pathlib.Path.home()) / ".claude" / "settings.json"):
+        try:
+            entry = (json.loads(f.read_text(encoding="utf-8")).get("extraKnownMarketplaces") or {}).get(MARKETPLACE)
+        except (OSError, ValueError, AttributeError):
+            continue
+        if isinstance(entry, dict):
+            declared = True
+            if "autoUpdate" in entry:
+                return entry["autoUpdate"] is True
+    return False if declared else None
+
+
 def status(cwd: pathlib.Path, cfg: Dict[str, Any], env: Optional[Dict[str, str]] = None) -> Tuple[List[str], bool]:
     """One screen: are the rules loaded, is the hook on, has it routed anything here, does anything override it."""
     hk = cfg["hook"]
@@ -945,13 +1109,25 @@ def status(cwd: pathlib.Path, cfg: Dict[str, Any], env: Optional[Dict[str, str]]
         out.append("- Working: no subagent seen here yet. The first one writes the log. If subagents have already "
                    "run since the install, the plugin is not loaded: run `/reload-plugins` (or restart Claude Code) "
                    "and check that `/plugin` shows it as enabled.")
-    try:
-        st = json.loads((cwd / PROJECT_SETTINGS).read_text(encoding="utf-8"))
-        shared = isinstance(st, dict) and (st.get("enabledPlugins") or {}).get(PLUGIN_ID) is True
-    except (OSError, ValueError, AttributeError):
-        shared = False
-    if shared:
-        out.append(f"- Team: {PROJECT_SETTINGS} enables the plugin for this project (commit it to share the setting).")
+    copy = project_copy(cwd, {} if env is not None else None)
+    if copy is not None:
+        theirs = shared_version(copy)
+        out.append(f"- Team: this project carries its own copy ({theirs or 'version unknown'}): everyone who opens it "
+                   "is routed, with nothing to install."
+                   + (f" This is {VERSION}: run `share` to bring the project's copy up to it."
+                      if theirs and theirs != VERSION and shared_root() is None else ""))
+    else:
+        out.append("- Team: only your own install routes here. `share` puts a copy into the project, so that "
+                   "everyone who opens it is routed with nothing to install.")
+    auto = None if shared_root() is not None else auto_update(cwd)
+    if shared_root() is not None:
+        out.append("- Updates: the project's copy stays at this version until someone runs `share` again from a newer one.")
+    elif auto is True:
+        out.append("- Updates: automatic. Claude Code refreshes the plugin in the background.")
+    elif auto is False:
+        out.append(f"- Updates: by hand (`claude plugin update {PLUGIN_ID}`). To make them automatic, ask Claude to "
+                   "switch on automatic updates for the router, or use `/plugin`, Marketplaces.")
+    out.append(f"- Python: {sys.version.split()[0]}.")
     limits = {k: v for k, v in (cfg.get("budget") or {}).items() if k in ("daily", "weekly", "monthly") and v}
     if limits:
         out.append("- Budget: " + ", ".join(f"{k} ${v}" for k, v in limits.items()) + ". Spend so far: `budget`.")
@@ -1052,6 +1228,9 @@ def main(argv: List[str]) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("init", help="write .claude/model-router.json with the default rules, to edit")
     sub.add_parser("status", help="one screen: is the router on, has it routed anything here, does anything override it")
+    sh = sub.add_parser("share", help="put a copy of the router into this project, so everyone who opens it is "
+                                      "routed with nothing to install")
+    sh.add_argument("--remove", action="store_true", help="take the project's copy and its hook out again")
     s = sub.add_parser("score", help="score tasks")
     s.add_argument("tasks", nargs="*", help="task files, owner/repo#N issue references, or - for standard input")
     s.add_argument("--issue", action="append", default=[], help="a GitHub issue: owner/repo#123 or its URL")
@@ -1116,6 +1295,10 @@ def main(argv: List[str]) -> int:
         lines, fine = status(pathlib.Path.cwd(), cfg)
         print("\n".join(lines))
         return 0 if fine else 1
+    if a.cmd == "share":
+        ok, lines = share(pathlib.Path.cwd(), a.remove)
+        print("\n".join(lines))
+        return 0 if ok else 1
     if a.cmd == "check-env":
         found = check_env()
         print("\n".join(["Would override the chosen model or effort:", *found]) if found

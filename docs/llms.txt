@@ -7,6 +7,8 @@ Use it when: deciding which Claude model or effort a Claude Code subagent or wor
 Key facts:
 - Install, one line in a terminal: `claude plugin install model-effort-router --marketplace islamkmansoori/model-effort-router`. Nothing to configure: every subagent is routed from then on with the built-in rules. Inside Claude Code: `/plugin marketplace add islamkmansoori/model-effort-router` then `/plugin install model-effort-router@model-effort-router`.
 - Check it works: ask Claude "is the model router working?" (runs `router.py status`). The skill is `/model-effort-router:route-task`.
+- A whole team with nothing to install: `router.py share` puts a copy of the router and its hooks into the project (`.claude/model-effort-router/`, `.claude/settings.json`); once committed, everyone who starts Claude Code in the project is routed. No plugin, no marketplace.
+- Automatic updates: add `"autoUpdate": true` next to the marketplace's `source` in Claude Code settings (`extraKnownMarketplaces.model-effort-router`), or switch it on in `/plugin`, Marketplaces. Needs Python 3.9+; a missing Python is reported at session start.
 - A PreToolUse hook sets `model` and `effort` on every Agent tool call that does not name them (verified live).
 - Explicit `**Critical:**` and `**Risk:**` lines, labels and configured paths raise the model; a risk or a critical part guessed from words never does.
 - `router.py cause` reads failing output and says whose failure it was: the worker (a wrong change), the environment (missing module, full disk, port, rate limit) or the task (ambiguous, needs a decision). Only a worker failure earns a stronger model; the same failure on two models stops the climb; after two retries it says to ask a person.

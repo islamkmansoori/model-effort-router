@@ -25,3 +25,41 @@ jobs:
       - run: python -m json.tool .claude-plugin/marketplace.json
       - run: python -m json.tool hooks/hooks.json
       - run: git diff --no-index --exit-code llms.txt docs/llms.txt
+
+  release:
+    # Releases publish themselves. After every test job has passed on main, each version that has no release
+    # yet gets one: the version in .claude-plugin/plugin.json (tagged here if it has no tag), and any tagged
+    # version newer than the latest release. The notes are that version's section of CHANGELOG.md.
+    # To release: change the version, add its CHANGELOG section, push to main.
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Publish releases for new versions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(python3 -c "import json; print(json.load(open('.claude-plugin/plugin.json'))['version'])")
+          latest=$(gh release list --limit 100 --json tagName --jq '.[].tagName' | sort -V | tail -1)
+          for tag in $( { git tag --list 'v*'; echo "v$version"; } | sort -uV ); do
+            if [ -n "$latest" ] && [ "$(printf '%s\n%s\n' "$tag" "$latest" | sort -V | tail -1)" = "$latest" ]; then
+              continue
+            fi
+            awk -v h="## ${tag#v}" '$0 == h {on = 1; next} /^## / {on = 0} on' CHANGELOG.md > notes.md
+            if ! grep -q '[^[:space:]]' notes.md; then
+              echo "CHANGELOG.md has no section for ${tag#v}"
+              exit 1
+            fi
+            first=$(grep -m1 '[^[:space:]]' notes.md)
+            case "$first" in
+              -*) title="$tag" ;;
+              *) title="$tag: ${first%.}" ;;
+            esac
+            gh release create "$tag" --target "$GITHUB_SHA" --title "$title" --notes-file notes.md
+            echo "released $title"
+          done
