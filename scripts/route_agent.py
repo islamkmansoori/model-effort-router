@@ -37,7 +37,9 @@ def decide(event: Dict[str, Any], cfg: Dict[str, Any], cwd: pathlib.Path,
     kind = str(ti.get("subagent_type") or "")
     entry: Dict[str, Any] = {"time": datetime.datetime.now().isoformat(timespec="seconds"),
                              "session": event.get("session_id", ""), "agent_type": kind,
-                             "description": str(ti.get("description") or "")[:120]}
+                             "description": str(ti.get("description") or "")[:120],
+                             # the call's own id: `router.py report` finds the subagent's usage records by it
+                             "tool_use_id": str(event.get("tool_use_id") or "")}
     if kind in hk.get("skip_agent_types", []):
         return {"_log": {**entry, "action": "skipped (agent type)"}}
     if hk.get("respect_explicit", True) and (ti.get("model") or ti.get("effort")):

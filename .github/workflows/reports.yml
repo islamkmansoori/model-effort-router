@@ -1,0 +1,51 @@
+name: reports
+# Adds up the savings reports people chose to post in Discussions (see scripts/collect_reports.py) and keeps the
+# result on the `community-data` branch: SAVINGS.md and savings.json. Nothing here reads anybody's machine: a report
+# exists only because a person published it. A post is other people's text, so this workflow never puts anything
+# from the event into a command; the script reads the posts as data and writes numbers only.
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  discussion:
+    types: [created, edited, deleted]
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - scripts/collect_reports.py
+      - .github/workflows/reports.yml
+concurrency:
+  group: reports
+  cancel-in-progress: false
+permissions:
+  contents: write
+  discussions: read
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Add up the reports
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 -I scripts/collect_reports.py --repo "$GITHUB_REPOSITORY" --out "$RUNNER_TEMP/data"
+      - name: Keep the result on the community-data branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git fetch --depth 1 origin community-data:community-data 2>/dev/null; then
+            git worktree add "$RUNNER_TEMP/branch" community-data
+          else
+            git worktree add --detach "$RUNNER_TEMP/branch"
+            git -C "$RUNNER_TEMP/branch" checkout --orphan community-data
+            git -C "$RUNNER_TEMP/branch" rm -rf -q .
+          fi
+          cp "$RUNNER_TEMP/data/SAVINGS.md" "$RUNNER_TEMP/data/savings.json" "$RUNNER_TEMP/branch/"
+          cd "$RUNNER_TEMP/branch"
+          git add SAVINGS.md savings.json
+          if git diff --cached --quiet; then
+            echo "The totals have not changed."
+            exit 0
+          fi
+          git commit -q -m "Savings reports added up"
+          git push origin community-data

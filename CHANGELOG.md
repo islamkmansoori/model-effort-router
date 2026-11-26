@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.0
+See what people save without collecting anything: a report you choose to post, and the router's own part measured apart.
+- `report`: prints a short anonymous summary of what was saved in a project, and a link that opens it as a ready-filled post in the repository's Discussions. Nothing is sent by itself: the text reaches GitHub when you open the link and is published when you press the button. `--copy` puts the text on the clipboard, `--open` opens the link, `--json` prints the numbers.
+- The router's own part is measured for the first time. For every subagent the hook routed, the report prices its replies and compares them with the same tokens on the model of the reply that started it, which is what the subagent would have run on with no router. It is kept apart from "all model choice" (every reply against the baseline), which also counts models picked by hand. Checked on a live session: a subagent sent from Sonnet to Haiku showed as a saving.
+- What a report holds: days, model replies, tokens and cost per model. Not in it: the project's name, file names, prompts, dates, session ids, and any model name that is not in the shipped price list (those become `other`).
+- A report is cumulative. The days already counted are kept in `.claude/model-router-state.json` (out of git), so they stay counted after Claude Code deletes old transcripts, and a random id lets a later report from the same project replace the earlier one.
+- `scripts/collect_reports.py` and the `reports` workflow add the posted reports up once a day, and when a report is posted, into `SAVINGS.md` and `savings.json` on the `community-data` branch. A post is other people's text: the script takes checked numbers from it and nothing else, leaves out a report whose totals do not add up or that is implausible, and counts the newest report per person and project.
+- The hook's log now keeps the id of the call that started each subagent (`tool_use_id`), which is how the report finds that subagent's usage. Log lines written before this version are matched by session and description.
+- Not checked: whether GitHub fills the title and text of a new discussion from a link. It is reported to work and is not in GitHub's documentation, so `report` always prints the text as well.
+
 ## 0.8.0
 Nothing left to do by hand: a team installs nothing, a missing Python is reported, updates can be automatic, releases publish themselves.
 - `share`: puts a copy of the router into a project (`.claude/model-effort-router/`) and its two hooks into `.claude/settings.json`. Once committed, everyone who starts Claude Code in the project is routed with no plugin to install, in headless runs and CI too. Checked live from a clean project. `share` again updates the copy; `share --remove` takes it out.

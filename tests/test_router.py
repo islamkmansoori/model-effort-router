@@ -683,6 +683,211 @@ def main() -> int:
     check("Team: this project carries its own copy (" + router.VERSION + ")" in sl and "- Python: " in sl,
           "status names the project's own copy and the Python it runs on", sl)
 
+    print("== savings report: shared only when the person chooses")
+    import shutil as _sh
+    import urllib.error
+    import urllib.parse
+    import collect_reports
+
+    def reply(mid: str, model: str, day: str, inp: int, out: int, agent: str = "", calls: Any = (), text: bool = True) -> str:
+        content = ([{"type": "text", "text": "private words"}] if text else []) + [
+            {"type": "tool_use", "name": "Agent", "id": c, "input": {"description": "private words"}} for c in calls]
+        d: Dict[str, Any] = {"type": "assistant", "timestamp": day + "T10:00:00.000Z", "sessionId": "sess-1",
+                             "message": {"id": mid, "model": model, "content": content,
+                                         "usage": {"input_tokens": inp, "output_tokens": out}}}
+        if agent:
+            d.update({"agentId": agent, "isSidechain": True})
+        return json.dumps(d)
+
+    rp_proj = pathlib.Path(tempfile.mkdtemp(prefix="secret-project-"))
+    rp_tr = pathlib.Path(tempfile.mkdtemp(prefix="transcripts-"))
+    subs = rp_tr / "sess-1" / "subagents"
+    subs.mkdir(parents=True)
+    # the main session runs on Opus 5.5; the reply that starts three subagents is on three lines, as it is streamed
+    (rp_tr / "sess-1.jsonl").write_text("\n".join([
+        reply("m1", "claude-opus-5-5", "2026-11-20", 1_000_000, 100_000, calls=["call-1"], text=False),
+        reply("m1", "claude-opus-5-5", "2026-11-20", 1_000_000, 100_000, calls=["call-2", "call-3"], text=False),
+        reply("m1", "claude-opus-5-5", "2026-11-20", 1_000_000, 100_000),
+        reply("m2", "acme-internal-7", "2026-11-21", 1_000_000, 0),      # a model only this machine's config knows
+        reply("m3", "mystery-model", "2026-11-21", 1_000_000, 0),        # a model with no price: not counted
+    ]) + "\n", encoding="utf-8")
+    for agent, call, words, model, inp, out in (
+            ("a1", "call-1", "Count the words in the private file", "claude-haiku-5-5", 2_000_000, 200_000),
+            ("a2", "call-2", "The caller chose this one", "claude-sonnet-5-5", 1_000_000, 0),
+            ("a3", "call-3", "Old line", "claude-haiku-5-5", 1_000_000, 0)):
+        (subs / f"agent-{agent}.jsonl").write_text(reply("s-" + agent, model, "2026-11-20", inp, out, agent=agent) + "\n", encoding="utf-8")
+        (subs / f"agent-{agent}.meta.json").write_text(json.dumps({"toolUseId": call, "description": words}), encoding="utf-8")
+    (rp_proj / ".claude").mkdir()
+    (rp_proj / CFG["hook"]["runs_log"]).write_text("\n".join(json.dumps(x) for x in [
+        {"action": "routed", "session": "sess-1", "description": "Count the words in the private file", "tool_use_id": "call-1"},
+        {"action": "kept (explicit)", "session": "sess-1", "description": "The caller chose this one", "tool_use_id": "call-2"},
+        {"action": "routed", "session": "sess-1", "description": "Old line"},                 # written before 0.9.0
+        {"action": "routed", "session": "sess-9", "description": "gone", "tool_use_id": "call-99"},   # records deleted
+    ]) + "\n", encoding="utf-8")
+    cfg_r = json.loads(json.dumps(CFG))
+    cfg_r["prices"]["acme-internal-7"] = [1.0, 1.0, 1.0]
+    recs = router.read_usage([rp_tr])
+    m1 = [r for r in recs if r["spawns"]]
+    check(len(m1) == 1 and m1[0]["spawns"] == ["call-1", "call-2", "call-3"] and {r["agent"] for r in recs} == {"", "a1", "a2", "a3"},
+          "a usage record names its subagent and every subagent start its reply carries, across streamed lines", m1)
+    rep, local = router.build_report(rp_proj, [rp_tr], cfg_r)
+    check(rep["routed"] == {"subagents": 2, "replies": 2, "tokens": 3_200_000, "cost_usd": 0.4, "parent_usd": 16.0, "saved_usd": 15.6},
+          "the router's own part: what the subagents it routed cost, against the model that started them", rep["routed"])
+    check((rep["cost_usd"], rep["baseline_usd"], rep["saved_usd"], rep["days"], rep["replies"], rep["tokens"]) == (9.4, 30.0, 20.6, 2, 5, 6_300_000),
+          "all model choice: every priced reply against the baseline, kept apart from the router's part", rep)
+    check(local["routed_starts"] == 3 and local["no_record"] == 1 and local["no_parent_price"] == 0,
+          "a routed start whose usage records are gone is counted as missing, not guessed", local)
+    check("other" in rep["models"] and "acme" not in json.dumps(rep) and rep["baseline"] == "claude-opus-5-5",
+          "a model name that is not in the shipped price list leaves the machine as 'other'", list(rep["models"]))
+    title, body = router.report_post(rep)
+    spoken = title + body
+    check(not any(w in spoken for w in ("secret-project", "sess-1", "private", "2026-11", str(rp_proj), "call-1", "acme"))
+          and spoken.isascii(), "the post holds totals only: no project, session, prompt or date", spoken)
+    link = router.report_link(title, body)
+    q = urllib.parse.parse_qs(urllib.parse.urlsplit(link).query)
+    check(link.startswith("https://github.com/" + router.HOME_REPO + "/discussions/new?category=show-and-tell&title=")
+          and q["body"] == [body] and q["title"] == [title], "the link opens a new post with the title and the text filled in")
+    state_r = json.loads((rp_proj / CFG["state"]).read_text(encoding="utf-8"))
+    rep2, _ = router.build_report(rp_proj, [rp_tr], cfg_r)
+    check(rep2 == rep and state_r["report"]["id"] == rep["id"] and len(rep["id"]) == 8,
+          "the same project reports under the same random id every time")
+    _sh.rmtree(rp_tr)
+    rp_tr.mkdir()
+    rep3, _ = router.build_report(rp_proj, [rp_tr], cfg_r)
+    check({k: v for k, v in rep3.items()} == rep, "days already counted stay counted after Claude Code deletes their transcripts", rep3)
+    (rp_tr / "sess-2.jsonl").write_text(reply("m9", "claude-opus-5-5", "2026-11-22", 1_000_000, 0) + "\n", encoding="utf-8")
+    rep4, local4 = router.build_report(rp_proj, [rp_tr], cfg_r)
+    check((rep4["days"], rep4["cost_usd"], rep4["baseline_usd"]) == (3, 13.4, 34.0) and rep4["routed"] == rep["routed"]
+          and (local4["from"], local4["to"]) == ("2026-11-20", "2026-11-22"), "a new day is added to the days already counted", rep4)
+    no_log = json.loads(json.dumps(router.usage_by_day(router.read_usage([rp_tr]), cfg_r)[0]))
+    kept_days = json.loads((rp_proj / CFG["state"]).read_text(encoding="utf-8"))["report"]["days"]
+    check(router.merge_days(kept_days, {"2026-11-20": {"replies": 4, "models": {}, "routed": {"subagents": 0}}})["2026-11-20"] == kept_days["2026-11-20"]
+          and no_log["2026-11-22"]["routed"]["subagents"] == 0,
+          "a day keeps the router's part it was counted with when the hook's log is no longer there")
+    (rp_proj / CFG["state"]).write_text(json.dumps({"failures": {"t": []}, "report": {"id": rep["id"], "baseline": "claude-opus-5-5", "days": {"2026-11-01": {"replies": 3}}}}), encoding="utf-8")
+    rep5, _ = router.build_report(rp_proj, [rp_tr], cfg_r)
+    check(rep5["days"] == 1 and "failures" in json.loads((rp_proj / CFG["state"]).read_text(encoding="utf-8")),
+          "a damaged state file is counted again from the records, and the other things kept in it stay", rep5)
+    if _sh.which("git"):
+        rp_git = pathlib.Path(tempfile.mkdtemp(prefix="rgit-"))
+        subprocess.run(["git", "init", "-q", str(rp_git)], check=True)
+        router.build_report(rp_git, [rp_tr], cfg_r)
+        check(pathlib.Path(CFG["state"]).name in (rp_git / ".git" / "info" / "exclude").read_text(encoding="utf-8"),
+              "the file that remembers the counted days is kept out of git")
+    here = pathlib.Path.cwd()
+    os.chdir(rp_proj)
+    try:
+        with contextlib.redirect_stdout(io.StringIO()) as rbuf:
+            rcode = router.main(["report", "--projects-dir", str(rp_tr)])
+        with contextlib.redirect_stdout(io.StringIO()) as jbuf:
+            router.main(["report", "--projects-dir", str(rp_tr), "--json"])
+    finally:
+        os.chdir(here)
+    rtext = rbuf.getvalue()
+    check(rcode == 0 and "Nothing has been sent" in rtext and "/discussions/new?category=" in rtext and '"Start discussion"' in rtext,
+          "the report command prints the post and the link, and says that nothing was sent", rtext[:400])
+    check(json.loads(jbuf.getvalue())[router.REPORT_KEY] == router.REPORT_FORMAT, "report --json prints the numbers only")
+    lg = route_agent.decide({**ev4, "tool_use_id": "toolu_abc"}, CFG, pathlib.Path("/nonexistent"), env={})
+    check((lg or {})["_log"]["tool_use_id"] == "toolu_abc", "the hook's log keeps the id of the call, so the report can find its usage")
+
+    print("== adding up the reports people posted")
+    got, why = collect_reports.parse_report(body)
+    check(why == "" and got is not None and got["routed"] == rep["routed"] and got["models"] == rep["models"] and got["id"] == rep["id"],
+          "a post written by the report command is read back number for number", why)
+
+    def post_of(rid: str, cost: float, base: float, rcost: float = 0.0, rparent: float = 0.0, days: int = 3, **over: Any) -> str:
+        d: Dict[str, Any] = {
+            router.REPORT_KEY: 1, "router": "0.9.0", "id": rid, "days": days, "replies": 10, "tokens": 5_000_000,
+            "baseline": "claude-opus-5-5", "cost_usd": cost, "baseline_usd": base, "saved_usd": round(base - cost, 2),
+            "routed": {"subagents": 2 if rparent else 0, "replies": 4 if rparent else 0, "tokens": 1_000_000 if rparent else 0,
+                       "cost_usd": rcost, "parent_usd": rparent, "saved_usd": round(rparent - rcost, 2)},
+            "models": {"claude-sonnet-5-5": {"replies": 10, "tokens": 5_000_000, "cost_usd": cost, "baseline_usd": base}}}
+        d.update(over)
+        return "Some words <b>anyone</b> could write.\n\n```json\n" + json.dumps(d) + "\n```\n"
+
+    def post(number: int, login: str, text: str) -> Dict[str, Any]:
+        return {"number": number, "user": {"login": login}, "body": text, "title": "<script>alert(1)</script>"}
+
+    posts = [
+        post(5, "alice", post_of("aaaaaaaa", 10.0, 20.0, 1.0, 3.0)),
+        post(9, "alice", post_of("aaaaaaaa", 12.0, 30.0, 2.0, 7.0, days=6)),            # the same project, later: replaces 5
+        post(6, "bob", post_of("aaaaaaaa", 5.0, 9.0)),                                  # another person, the same id by chance
+        post(7, "alice", post_of("bbbbbbbb", 1.0, 2.0)),                                # alice's second project
+        post(1, "owner", "Welcome to Discussions! ```json\n{\"not\": \"a report\"}\n```"),
+        post(11, "mallory", post_of("cccccccc", 10.0, 20.0, saved_usd=900.0)),          # the totals do not add up
+        post(12, "mallory", post_of("cccccccc", 10.0, 20.0, router="<script>alert(1)</script>")),
+        post(13, "mallory", post_of("cccccccc", 10.0, 20.0, models={"x](http://evil.example)": {"replies": 10, "tokens": 5_000_000, "cost_usd": 10.0, "baseline_usd": 20.0}})),
+        post(14, "mallory", post_of("cccccccc", 10.0, 4_000_000.0)),                    # far too much for three days
+        post(15, "mallory", post_of("cccccccc", 10.0, 20.0, **{router.REPORT_KEY: 2})),
+        post(16, "mallory", post_of("cccccccc", 10.0, 20.0, days=True)),
+        post(17, "mallory", post_of("cccccccc", -5.0, 20.0)),
+        post(18, "mallory", "```json\n" + "{\"a\":" * 50000 + "\n```"),                 # must not crash the run
+        post(19, "mallory", "```json\n{\"" + router.REPORT_KEY + "\": 1, \"cost_usd\": NaN}\n```"),
+    ]
+    res = collect_reports.add_up(posts)
+    tot = res["total"]
+    check((tot["reports"], tot["people"], tot["cost_usd"], tot["baseline_usd"], tot["saved_usd"], tot["days"]) == (3, 2, 18.0, 41.0, 23.0, 12),
+          "the newest report per person and project counts; an older one from the same project is replaced", tot)
+    check(tot["routed"] == {"subagents": 2, "replies": 4, "tokens": 1_000_000, "cost_usd": 2.0, "parent_usd": 7.0, "saved_usd": 5.0},
+          "the router's own part is added up apart from all model choice", tot["routed"])
+    whys = {x["post"]: x["why"] for x in res["left_out"]}
+    check(whys == {11: collect_reports.SUMS, 12: collect_reports.FIELDS, 13: collect_reports.FIELDS, 14: collect_reports.RANGE,
+                   15: collect_reports.FORMAT, 16: collect_reports.FIELDS, 17: collect_reports.FIELDS, 19: collect_reports.FIELDS},
+          "a report that does not add up, is not plain numbers, or is implausible is listed and left out", whys)
+    pg = collect_reports.page(res, "o/r")
+    check("[#9](https://github.com/o/r/discussions/9)" in pg and "#5]" not in pg and "## Not counted" in pg
+          and not any(w in pg for w in ("<script", "alert(", "evil", "anyone", "alice", "mallory", "Welcome")),
+          "the page holds numbers and fixed words only: nothing a post says is copied into it", pg)
+    check("nobody has verified them" in pg and "The router's own choices" in pg and "saved $5.00 (71%)" in pg,
+          "the page says the totals are self-reported and shows the router's own part first", pg[:600])
+    odd = {"www.evil.example": {"replies": 4, "tokens": 2_000_000, "cost_usd": 4.0, "baseline_usd": 8.0},
+           "also-unknown": {"replies": 6, "tokens": 3_000_000, "cost_usd": 6.0, "baseline_usd": 12.0}}
+    folded, fwhy = collect_reports.parse_report(post_of("dddddddd", 10.0, 20.0, baseline="www.evil.example", models=odd))
+    check(fwhy == "" and folded is not None and folded["baseline"] == "other"
+          and folded["models"] == {"other": {"replies": 10, "tokens": 5_000_000, "cost_usd": 10.0, "baseline_usd": 20.0}},
+          "a model name that is not in the shipped price list is counted as 'other', so a post cannot plant a name or an address", folded)
+    many = [post(100 + i, "carol", post_of(f"{i:08x}", 1.0, 2.0)) for i in range(25)]
+    res_many = collect_reports.add_up(many)
+    check(res_many["total"]["reports"] == collect_reports.MAX_PER_PERSON and len(res_many["left_out"]) == 5
+          and {x["post"] for x in res_many["left_out"]} == {100, 101, 102, 103, 104},
+          "one account cannot flood the total: only its newest reports count", res_many["total"])
+    empty = collect_reports.page(collect_reports.add_up([posts[4]]), "o/r")
+    check("No reports yet" in empty and "## By model" not in empty, "with no reports the page says so and says how to add one")
+
+    class _Resp:
+        def __init__(self, data: Any) -> None:
+            self.data = json.dumps(data).encode("utf-8")
+
+        def __enter__(self) -> "_Resp":
+            return self
+
+        def __exit__(self, *a: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return self.data
+
+    asked: list = []
+
+    def fake_open(req: Any, timeout: int = 0) -> _Resp:
+        asked.append((req.full_url, req.get_header("Authorization")))
+        if req.get_header("Authorization"):
+            raise urllib.error.HTTPError(req.full_url, 403, "Forbidden", None, None)  # type: ignore[arg-type]
+        return _Resp([{"number": i} for i in range(100)] if req.full_url.endswith("&page=1") else [{"number": 1}] * 3)
+
+    fetched = collect_reports.fetch_posts("o/r", token="t0ken", opener=fake_open)
+    check(len(fetched) == 103 and [x[1] for x in asked] == ["Bearer t0ken", None, None] and asked[-1][0].endswith("&page=2"),
+          "the posts are read page by page, and without the token when the token is refused", asked)
+    with contextlib.redirect_stdout(io.StringIO()):
+        bad_repo = collect_reports.main(["--repo", "not a repo"])
+    out_dir = pathlib.Path(tempfile.mkdtemp(prefix="out-"))
+    posts_file = out_dir / "posts.json"
+    posts_file.write_text(json.dumps(posts), encoding="utf-8")
+    with contextlib.redirect_stdout(io.StringIO()):
+        wrote = collect_reports.main(["--posts", str(posts_file), "--out", str(out_dir / "data"), "--repo", "o/r"])
+    check(bad_repo == 2 and wrote == 0 and json.loads((out_dir / "data" / "savings.json").read_text(encoding="utf-8"))["total"]["reports"] == 3
+          and (out_dir / "data" / "SAVINGS.md").read_text(encoding="utf-8") == pg, "the collector writes the page and the numbers to a folder")
+
     with contextlib.redirect_stdout(io.StringIO()) as buf:
         code = router.main(["status"])
     check(code in (0, 1) and buf.getvalue().startswith("model-effort-router " + router.VERSION), "the status command prints the screen")

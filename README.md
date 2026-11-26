@@ -18,6 +18,7 @@ In other words: an explainable **LLM router** (model routing) for Claude Code su
 - **Checks the task before spending.** Vague acceptance criteria and open questions are flagged first: an unclear task fails on every model.
 - **Spend control.** Daily, weekly and monthly budgets with alerts, an optional cap in the hook, and an audit of what the hook actually chose.
 - **Measured.** An outcome log suggests better rules from your own results; the benchmark publishes every run.
+- **Private.** Nothing about your code or your usage is sent anywhere. `report` prints a short anonymous summary of what was saved, which you may post if you choose.
 - **No dependencies.** Standard-library Python 3.9+, one config file, MIT.
 
 ## Install
@@ -39,7 +40,7 @@ Needs Claude Code and Python 3.9 or later (`python3`, `python`, or the `py` laun
 **Check that it works.** Ask Claude "is the model router working?", or type `/model-effort-router:route-task is the router working?`. The answer is one screen:
 
 ```
-model-effort-router 0.8.0
+model-effort-router 0.9.0
 - Rules: built in. Nothing to set up; `init` writes a copy to edit if you want other rules.
 - Hook: on. Subagents get one of: sonnet/medium, sonnet/high, opus/high, opus/xhigh.
 - Left alone: Explore, claude-code-guide, statusline-setup, calls that name their own model or effort.
@@ -116,6 +117,23 @@ Caveats: one run per task and rung (models vary run to run), bug fixes in two Py
 ## On a real project
 
 On a private 18-day multi-agent build (43 sessions, 19,226 model replies), mixing models saved an estimated **29%** against running everything on Opus 5.5: about $1,586 instead of $2,242 in API-equivalent dollars. That measures model choice in general, most of it made by hand before the router existed; it is the prize the router automates. Details and method: [docs/case-study.md](docs/case-study.md). Measure your own with `router.py savings`.
+
+## What people report saving
+
+**[The running total](https://github.com/islamkmansoori/model-effort-router/blob/community-data/SAVINGS.md)** is added up from reports people chose to post. The router sends nothing by itself, so that is the only way anyone can know what it saves: each person says so, if they want to.
+
+```
+python3 scripts/router.py report        # or ask Claude: "share what the router saved"
+```
+
+It prints a short post and a link. Nothing is sent until you open the link, and nothing is published until you press the button on GitHub. If the form opens empty, paste the text (`--copy` puts it on the clipboard). The post holds totals only, with two results kept apart:
+
+- **The router's own choices.** What the subagents it routed cost, against the same tokens on the model that started them, which is what they would have run on with no router. This is the router's own effect. It can be negative: the router also sends hard tasks up.
+- **All model choice.** Every reply against the same tokens on the baseline model. This also counts models you picked by hand, so read it as the size of the prize.
+
+Not in the post: the project's name, file names, prompts, dates, session ids, or any model name that is not in the shipped price list. Both results assume another model would have used the same number of tokens.
+
+A report is cumulative for its project, so posting again replaces your earlier one instead of counting twice. Claude Code deletes old transcripts (after 30 days by default); the router remembers the days it has counted in `.claude/model-router-state.json`, which git on your machine is told to ignore. The reports are added up once a day by `scripts/collect_reports.py`, which takes numbers from a post and nothing else. They are each person's own estimate and nobody verifies them.
 
 ## Benchmark results
 
@@ -207,6 +225,7 @@ python3 scripts/router.py budget                               # spend against y
 python3 scripts/router.py record TASK.md --ran sonnet/high --first-try pass --findings 0
 python3 scripts/router.py summary                              # outcomes, with suggested point changes
 python3 scripts/router.py savings --since 2026-11-01            # what model choice saved, from Claude Code's usage records
+python3 scripts/router.py report                               # a short anonymous summary to post if you choose; sends nothing
 python3 scripts/router.py init                                 # .claude/model-router.json to edit
 ```
 
@@ -267,6 +286,9 @@ Most routers (for example claude-model-router, Jev-Router, RouteLLM) judge diffi
 
 **Does it send my code anywhere?**
 No. The router and the hook run locally. The only network calls are `--issue` (GitHub's API) and `--assess` (one Claude call, through your own Claude Code), and both happen only when you ask for them.
+
+**Does it send my usage or my savings anywhere?**
+No. There is no telemetry. `report` prints a short summary and a link, and it reaches GitHub only if you open the link and publish the post yourself. [The running total](https://github.com/islamkmansoori/model-effort-router/blob/community-data/SAVINGS.md) is built from those posts.
 
 **Can it use Haiku?**
 Yes: add `["haiku", "low"]` to the bottom of the ladder. The assessor uses Haiku by default.

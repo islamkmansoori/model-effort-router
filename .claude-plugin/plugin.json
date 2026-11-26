@@ -1,6 +1,6 @@
 {
   "name": "model-effort-router",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Choose the Claude model and effort for each subagent and task automatically, and decide what to do when a worker fails: explicit critical and risk lines, failure causes (worker, environment or task), retry limits, a readiness check, budgets, an audit of the hook, an outcome log that suggests better rules, and a public SWE-bench benchmark.",
   "author": {
     "name": "Islam Mansoori"

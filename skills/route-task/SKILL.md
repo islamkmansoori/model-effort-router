@@ -1,6 +1,6 @@
 ---
 name: route-task
-description: Choose the Claude model and effort for a task before handing it to a subagent or a separate worker session, decide what to do when a worker fails, and record how it went. Use when delegating a task written in a file (a story, an issue, a work packet), a GitHub issue or a plain prompt; when a worker or its tests fail and you must decide between retrying, a stronger model, fixing the environment or asking a person; when a task is finished; or when the user asks which model or effort a task should run on, whether the router is working, what it chose, or how much is being spent; or when the user wants the whole team or project to get the router without installing it, or wants its updates to be automatic.
+description: Choose the Claude model and effort for a task before handing it to a subagent or a separate worker session, decide what to do when a worker fails, and record how it went. Use when delegating a task written in a file (a story, an issue, a work packet), a GitHub issue or a plain prompt; when a worker or its tests fail and you must decide between retrying, a stronger model, fixing the environment or asking a person; when a task is finished; or when the user asks which model or effort a task should run on, whether the router is working, what it chose, or how much is being spent; or when the user wants the whole team or project to get the router without installing it, or wants its updates to be automatic; or when the user wants to share what the router saved, or asks what other people save with it.
 argument-hint: "[task file | owner/repo#123 | \"prompt\"]"
 ---
 
@@ -62,6 +62,12 @@ Only when the user wants their own rules: `python3 "${CLAUDE_PLUGIN_ROOT}/script
 ## When the user wants everyone on the project to have it
 
 `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/router.py" share` (run it in the folder people start Claude Code in). It puts a copy of the router into `.claude/model-effort-router/` and two hooks into `.claude/settings.json`, and prints the `git add` line. Tell the user to commit both: from then on everyone who starts Claude Code in the project is routed, with no plugin to install. Do not commit for them unless they ask. In such a project this plugin's own hook stays silent, so nothing is routed twice. `share` again from a newer version updates the copy; `share --remove` takes it out.
+
+## When the user wants to share what the router saved, or asks what other people save
+
+The router sends nothing by itself. `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/router.py" report` prints a short post and a link: totals only (days, replies, tokens and cost per model; the router's own choices kept apart from all model choice), with no project name, file name, prompt, date or session id. Show the user the post as printed and give them the link; they open it, read it and press the button on GitHub themselves. Do not open the link, add `--open`, or post it for them unless they ask in so many words: opening the link already sends the text to GitHub. If their form opens empty, `--copy` puts the text on the clipboard to paste. A report is cumulative for the project, so a later one replaces the earlier one in the total.
+
+What other people reported is added up at https://github.com/islamkmansoori/model-effort-router/blob/community-data/SAVINGS.md (self-reported estimates, not verified).
 
 ## When the user wants updates to arrive by themselves
 

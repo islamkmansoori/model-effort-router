@@ -23,7 +23,7 @@
   "programmingLanguage": "Python",
   "runtimePlatform": "Claude Code",
   "license": "https://opensource.org/licenses/MIT",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "author": {"@type": "Person", "name": "Islam Mansoori"},
   "keywords": "Claude Code, plugin, subagents, model selection, reasoning effort, LLM routing, cost, SWE-bench"
 }
@@ -100,6 +100,9 @@ th, td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; whi
 <p><code>router.py cause out.txt</code> reads the failing output and says whose failure it was: the worker (a wrong change), the environment (a missing module, a full disk, a port, a rate limit) or the task (ambiguous, needs a decision). Only a worker failure earns a stronger model, the same failure on two models stops the climb, and after two retries the router says to ask a person. Before any tokens are spent, a readiness check flags vague acceptance criteria and open questions.</p>
 <h2>Spend control</h2>
 <p><code>router.py budget</code> reports spend against daily, weekly and monthly limits from Claude Code's own usage records; the hook can cap ordinary tasks past 80% of the daily limit. <code>router.py audit</code> shows what the hook chose, and <code>router.py savings</code> estimates what the mix of models saved.</p>
+
+<h2>What people report saving</h2>
+<p>The router sends nothing by itself. <code>router.py report</code> prints a short anonymous summary of what was saved (totals only, with the router's own choices kept apart from all model choice) and a link to post it if you choose. The posted reports are added up into <a href="https://github.com/islamkmansoori/model-effort-router/blob/community-data/SAVINGS.md">the running total</a>: each person's own estimate, not verified.</p>
 
 <h2>Questions</h2>
 <h3>Which Claude model should a Claude Code subagent use?</h3>

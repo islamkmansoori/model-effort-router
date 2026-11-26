@@ -15,6 +15,8 @@
     python3 router.py budget                                 # spend against your daily, weekly, monthly limits
     python3 router.py record TASK.md --ran sonnet/high --first-try pass
     python3 router.py summary                                # the outcome log, with suggested point changes
+    python3 router.py report                                 # a short anonymous summary of what was saved, to share
+                                                             # if you choose: it prints a post and a link, sends nothing
 
 How it decides (every number lives in the config, not in this file):
   1. Critical: a `**Critical:** yes` line, a `critical` label, or a touched file under a configured critical path puts
@@ -26,7 +28,8 @@ How it decides (every number lives in the config, not in this file):
   4. Retries: only the worker's own failures (`--cause worker`) move it up a rung.
   5. `record` each finished task; `summary` reads the log back and suggests point changes.
 
-Standard library only. Python 3.9 or later. The only network call is --issue, to api.github.com.
+Standard library only. Python 3.9 or later. The only network call is --issue, to api.github.com. Nothing about your
+usage is sent anywhere: `report` prints a post and a link, and the post exists online only if you publish it.
 """
 from __future__ import annotations
 
@@ -41,6 +44,7 @@ import re
 import shutil
 import subprocess
 import sys
+import urllib.parse
 import urllib.request
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -75,7 +79,7 @@ def hook_commands(script: str) -> Dict[str, str]:
 
 MARK = "**Model and effort (model-effort-router):**"
 CAUSES = ("worker", "environment", "task")   # --cause; "unknown" and "repeat" are set by --failure-log
-VERSION = "0.8.0"
+VERSION = "0.9.0"
 
 # Settings that make Claude Code run on something other than what the router chose (Claude Code docs, Nov 2026).
 OVERRIDES = {
@@ -712,7 +716,8 @@ def usage_cost(u: Dict[str, Any], price: List[float]) -> float:
 def read_usage(folders: List[pathlib.Path], since: str = "", until: str = "", mentions: str = "",
                exclude: Optional[List[str]] = None) -> List[Dict[str, Any]]:
     """One record per model reply (Claude Code repeats a reply's usage on every streamed block), from the JSONL
-    transcripts under the folders. `mentions`: keep only sessions whose transcript contains that text."""
+    transcripts under the folders. `mentions`: keep only sessions whose transcript contains that text. A record
+    also says which subagent made the reply (`agent`) and which subagent starts the reply carries (`spawns`)."""
     files = sorted({f for d in folders for f in d.rglob("*.jsonl")})
     if since:
         # a file not touched since the day before `since` cannot hold a newer reply (a day's margin for time zones)
@@ -753,8 +758,16 @@ def read_usage(folders: List[pathlib.Path], since: str = "", until: str = "", me
             if not u or not model or model.startswith("<") or (since and day < since) or (until and day > until):
                 continue
             key = m.get("id") or d.get("requestId") or d.get("uuid") or ln[:80]
+            in_sub = f.parent.name == "subagents"
+            content = m.get("content")
+            spawns = [str(b["id"]) for b in content if isinstance(b, dict) and b.get("type") == "tool_use"
+                      and b.get("name") in ("Agent", "Task") and b.get("id")] if isinstance(content, list) else []
+            if key in seen:   # the same reply on another line: keep every subagent start it carries
+                spawns = seen[key]["spawns"] + [c for c in spawns if c not in seen[key]["spawns"]]
             seen[key] = {"model": model, "usage": u, "day": day, "session": session,
-                         "subagent": bool(d.get("isSidechain") or d.get("agentId") or f.parent.name == "subagents")}
+                         "subagent": bool(d.get("isSidechain") or d.get("agentId") or in_sub),
+                         "agent": str(d.get("agentId") or (f.stem[6:] if in_sub and f.stem.startswith("agent-") else "")),
+                         "spawns": spawns}
     return list(seen.values())
 
 
@@ -813,6 +826,293 @@ def savings_report(s: Dict[str, Any]) -> List[str]:
     return lines
 
 
+# ---- report: a summary a person may choose to share --------------------------------------------------------------
+# Nothing here sends anything. `report` prints a short post and a link. The post reaches GitHub only when the person
+# opens the link, and is published only when they press the button there. It holds totals and nothing else: no
+# project name, file name, prompt, date or session id, and no model name that is not in the shipped price list.
+
+HOME_REPO = "islamkmansoori/model-effort-router"
+REPORT_KEY = "model_effort_router_report"   # the key that marks a report; its value is the format number
+REPORT_FORMAT = 1
+REPORT_CATEGORY = "show-and-tell"            # the Discussions category the ready-filled post opens in
+TOKEN_KEYS = ("input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")
+
+
+def hook_rows(path: pathlib.Path) -> List[Dict[str, Any]]:
+    """The hook's log: one dict per subagent start it saw."""
+    rows: List[Dict[str, Any]] = []
+    try:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return rows
+    for ln in text.splitlines():
+        try:
+            d = json.loads(ln)
+        except ValueError:
+            continue
+        if isinstance(d, dict):
+            rows.append(d)
+    return rows
+
+
+def subagent_index(folders: List[pathlib.Path]) -> Dict[str, Dict[str, str]]:
+    """Every subagent Claude Code recorded under the folders, by the id of the call that started it."""
+    out: Dict[str, Dict[str, str]] = {}
+    for d in folders:
+        for f in sorted(d.rglob("agent-*.meta.json")):
+            try:
+                meta = json.loads(f.read_text(encoding="utf-8", errors="ignore"))
+            except (OSError, ValueError):
+                continue
+            call = meta.get("toolUseId") if isinstance(meta, dict) else None
+            if call and f.parent.name == "subagents":
+                out[str(call)] = {"agent": f.name[len("agent-"):-len(".meta.json")], "session": f.parent.parent.name,
+                                  "description": str(meta.get("description") or "")}
+    return out
+
+
+def routed_agents(rows: List[Dict[str, Any]], index: Dict[str, Dict[str, str]]) -> Tuple[Dict[str, str], int]:
+    """The subagents the router routed, matched to Claude Code's records: {subagent id: id of the call that
+    started it}. Also how many routed starts have no record left (Claude Code deletes old transcripts)."""
+    by_text: Dict[Tuple[str, str], List[str]] = {}
+    for call, v in sorted(index.items()):
+        by_text.setdefault((v["session"], v["description"][:120]), []).append(call)
+    found: Dict[str, str] = {}
+    gone = 0
+    for r in rows:
+        if r.get("action") != "routed":
+            continue
+        call = str(r.get("tool_use_id") or "")
+        if not call:   # a line written before 0.9.0 has no call id: match the session and the description
+            left = [c for c in by_text.get((str(r.get("session") or ""), str(r.get("description") or "")), [])
+                    if index[c]["agent"] not in found]
+            call = left[0] if left else ""
+        if call not in index:
+            gone += 1
+            continue
+        found[index[call]["agent"]] = call
+    return found, gone
+
+
+def public_models() -> Set[str]:
+    """The model names in the shipped price list: the only model names a report may carry."""
+    try:
+        prices = json.loads(DEFAULT_CONFIG.read_text(encoding="utf-8")).get("prices", {})
+    except (OSError, ValueError):
+        return set()
+    return {k for k in prices if not k.startswith("_")}
+
+
+def public_name(model: str, prices: Dict[str, Any], known: Set[str]) -> str:
+    """The price-list name of a model, or 'other' for a name that only this machine's config knows."""
+    keys = sorted((k for k in prices if not k.startswith("_") and model.startswith(k)), key=len, reverse=True)
+    return keys[0] if keys and keys[0] in known else "other"
+
+
+def usage_by_day(records: List[Dict[str, Any]], cfg: Dict[str, Any], routed: Optional[Dict[str, str]] = None,
+                 baseline: Optional[str] = None) -> Tuple[Dict[str, Dict[str, Any]], int]:
+    """One entry per day. Per model: replies, tokens, cost, and the cost of the same tokens on the baseline. And the
+    router's own part: the subagents it routed, their cost, and the cost of the same tokens on the model of the
+    reply that started them (what a subagent runs on when nothing chooses for it). Also returns how many routed
+    subagents were left out of that part because the model that started them is unknown or has no price."""
+    prices = cfg["prices"]
+    base = baseline or cfg.get("savings_baseline", "claude-opus-5-5")
+    bp = price_of(base, prices)
+    if bp is None:
+        raise ValueError(f"no price for the baseline {base}")
+    known = public_models()
+    routed = routed or {}
+    started_by = {call: r["model"] for r in records for call in r.get("spawns", [])}
+    days: Dict[str, Dict[str, Any]] = {}
+    first_day: Dict[str, str] = {}
+    no_parent: Set[str] = set()
+    for r in records:
+        p = price_of(r["model"], prices)
+        if p is None or not r["day"]:
+            continue
+        u = r["usage"]
+        tokens = sum(int(u.get(k) or 0) for k in TOKEN_KEYS)
+        cost = usage_cost(u, p)
+        day = days.setdefault(r["day"], {"replies": 0, "models": {}, "routed": {
+            "subagents": 0, "replies": 0, "tokens": 0, "cost": 0.0, "at_parent": 0.0}})
+        m = day["models"].setdefault(public_name(r["model"], prices, known),
+                                     {"replies": 0, "tokens": 0, "cost": 0.0, "at_baseline": 0.0})
+        day["replies"] += 1
+        m["replies"] += 1
+        m["tokens"] += tokens
+        m["cost"] += cost
+        m["at_baseline"] += usage_cost(u, bp)
+        agent = r.get("agent") or ""
+        call = routed.get(agent)
+        if not call:
+            continue
+        pp = price_of(started_by.get(call, ""), prices)
+        if pp is None:
+            no_parent.add(agent)
+            continue
+        ro = day["routed"]
+        ro["replies"] += 1
+        ro["tokens"] += tokens
+        ro["cost"] += cost
+        ro["at_parent"] += usage_cost(u, pp)
+        if r["day"] < first_day.get(agent, "9999"):
+            first_day[agent] = r["day"]
+    for d in first_day.values():
+        days[d]["routed"]["subagents"] += 1
+    return days, len(no_parent)
+
+
+def merge_days(kept: Dict[str, Any], fresh: Dict[str, Any]) -> Dict[str, Any]:
+    """Days already counted stay counted after Claude Code deletes their transcripts: a day is replaced only by a
+    count with at least as many replies."""
+    def size(e: Dict[str, Any]) -> Tuple[int, int]:   # more replies wins; then more routed subagents
+        return int(e["replies"]), int(e["routed"]["subagents"])
+    out = {d: e for d, e in kept.items() if isinstance(e, dict) and isinstance(e.get("replies"), int)}
+    for d, e in fresh.items():
+        if d not in out or size(e) >= size(out[d]):
+            out[d] = e
+    return out
+
+
+def report_totals(days: Dict[str, Dict[str, Any]], baseline: str, rid: str) -> Dict[str, Any]:
+    """The report itself: everything that is shared, and nothing else."""
+    def usd(x: float) -> float:
+        return round(float(x), 2)
+    models: Dict[str, Dict[str, Any]] = {}
+    ro: Dict[str, Any] = {"subagents": 0, "replies": 0, "tokens": 0, "cost": 0.0, "at_parent": 0.0}
+    for e in days.values():
+        for name, m in e["models"].items():
+            t = models.setdefault(str(name), {"replies": 0, "tokens": 0, "cost": 0.0, "at_baseline": 0.0})
+            for k in t:
+                t[k] += m[k]
+        for k in ro:
+            ro[k] += e["routed"][k]
+    rows = {n: {"replies": int(m["replies"]), "tokens": int(m["tokens"]), "cost_usd": usd(m["cost"]),
+                "baseline_usd": usd(m["at_baseline"])} for n, m in sorted(models.items())}
+    cost = usd(sum(m["cost_usd"] for m in rows.values()))
+    base = usd(sum(m["baseline_usd"] for m in rows.values()))
+    return {REPORT_KEY: REPORT_FORMAT, "router": VERSION, "id": rid, "days": len(days),
+            "replies": sum(m["replies"] for m in rows.values()), "tokens": sum(m["tokens"] for m in rows.values()),
+            "baseline": baseline, "cost_usd": cost, "baseline_usd": base, "saved_usd": usd(base - cost),
+            "routed": {"subagents": int(ro["subagents"]), "replies": int(ro["replies"]), "tokens": int(ro["tokens"]),
+                       "cost_usd": usd(ro["cost"]), "parent_usd": usd(ro["at_parent"]),
+                       "saved_usd": usd(usd(ro["at_parent"]) - usd(ro["cost"]))},
+            "models": rows}
+
+
+def build_report(cwd: pathlib.Path, folders: List[pathlib.Path], cfg: Dict[str, Any],
+                 keep: bool = True) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """The report for this project, and what only this machine is told (never shared). The days it has counted are
+    kept in the state file, so the report stays cumulative after Claude Code deletes old transcripts; the random
+    id kept there lets a later report from the same project replace the earlier one when reports are added up."""
+    base = cfg.get("savings_baseline", "claude-opus-5-5")
+    rows = hook_rows(cwd / cfg["hook"]["runs_log"])
+    routed, gone = routed_agents(rows, subagent_index(folders))
+    fresh, no_parent = usage_by_day(read_usage(folders), cfg, routed)
+    state_path = cwd / cfg["state"]
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else {}
+    except (OSError, ValueError):
+        state = {}
+    if not isinstance(state, dict):
+        state = {}
+    mine = state.get("report") if isinstance(state.get("report"), dict) else {}
+    rid = str(mine.get("id") or "")
+    if not re.fullmatch(r"[0-9a-f]{8}", rid):
+        import secrets
+        rid = secrets.token_hex(4)
+    kept = mine.get("days") if mine.get("baseline") == base and isinstance(mine.get("days"), dict) else {}
+    name = public_name(base, cfg["prices"], public_models())
+    try:
+        days = merge_days(kept, fresh)
+        rep = report_totals(days, name, rid)
+    except (KeyError, TypeError, ValueError, AttributeError):   # a damaged state file: count again from the records
+        days = fresh
+        rep = report_totals(days, name, rid)
+    if keep:
+        new = not state_path.exists()
+        short = json.loads(json.dumps(days), parse_float=lambda x: round(float(x), 6))   # six decimals are plenty
+        state["report"] = {"id": rid, "baseline": base, "days": short}
+        try:
+            state_path.parent.mkdir(parents=True, exist_ok=True)
+            state_path.write_text(json.dumps(state, indent=1), encoding="utf-8")
+            if new and cfg.get("keep_run_data_out_of_git", True):
+                keep_out_of_git(cwd, [state_path.name])
+        except OSError:
+            pass
+    return rep, {"routed_starts": sum(1 for r in rows if r.get("action") == "routed"), "no_record": gone,
+                 "no_parent_price": no_parent, "from": min(days, default=""), "to": max(days, default="")}
+
+
+def report_post(rep: Dict[str, Any], table: bool = True) -> Tuple[str, str]:
+    """The title and the text of the post a person may publish. Plain ASCII; the last block is the report itself."""
+    def part(saved: float, against: float = 0.0) -> str:
+        pct = f" ({abs(saved) / against:.0%})" if against else ""
+        return (f"saved ${saved:,.2f}" if saved >= 0 else f"cost ${-saved:,.2f} more") + pct
+    ro = rep["routed"]
+    span = f"{rep['days']} day" + ("" if rep["days"] == 1 else "s")
+    if ro["subagents"]:
+        title = f"Savings report: the router's choices {part(ro['saved_usd'])} over {span}"
+        own = (f"**The router's own choices:** {ro['subagents']} subagent" + ("" if ro["subagents"] == 1 else "s")
+               + f" it routed cost ${ro['cost_usd']:,.2f}. The same tokens on the model that started them: "
+               f"${ro['parent_usd']:,.2f}. That {part(ro['saved_usd'], ro['parent_usd'])}.")
+    else:
+        title = f"Savings report: model choice {part(rep['saved_usd'])} over {span}, the router not routing yet"
+        own = "**The router's own choices:** none yet. The router has not routed a subagent in this project."
+    lines = [f"Shared with `router.py report` (model-effort-router {rep['router']}). An estimate from Claude Code's "
+             f"own usage records at API list prices, over {span}: {rep['replies']:,} model replies, "
+             f"{rep['tokens']:,} tokens.", "", own, "",
+             f"**All model choice:** ${rep['cost_usd']:,.2f} against ${rep['baseline_usd']:,.2f} with everything on "
+             f"{rep['baseline']}: {part(rep['saved_usd'], rep['baseline_usd'])}. This includes models picked by hand.", ""]
+    if table:
+        lines += ["| Model | Replies | Tokens | Cost | Same tokens on the baseline |", "|---|---|---|---|---|"]
+        lines += [f"| {n} | {m['replies']:,} | {m['tokens']:,} | ${m['cost_usd']:,.2f} | ${m['baseline_usd']:,.2f} |"
+                  for n, m in rep["models"].items()]
+        lines.append("")
+    lines += ["```json", json.dumps(rep, separators=(",", ":")), "```"]
+    return title, "\n".join(lines)
+
+
+def report_link(title: str, body: str, repo: str = HOME_REPO) -> str:
+    """A link that opens a new post in the repository's Discussions with the title and the text filled in."""
+    return f"https://github.com/{repo}/discussions/new?" + urllib.parse.urlencode(
+        {"category": REPORT_CATEGORY, "title": title, "body": body}, quote_via=urllib.parse.quote)
+
+
+def to_clipboard(text: str) -> bool:
+    for cmd in (["pbcopy"], ["clip"], ["wl-copy"], ["xclip", "-selection", "clipboard"]):
+        if shutil.which(cmd[0]):
+            try:
+                subprocess.run(cmd, input=text.encode("utf-8"), check=True, timeout=10)
+                return True
+            except (OSError, subprocess.SubprocessError):
+                continue
+    return False
+
+
+def report_screen(rep: Dict[str, Any], local: Dict[str, Any]) -> Tuple[List[str], str, str]:
+    """What `report` prints, the link, and the text of the post."""
+    title, body = report_post(rep)
+    link = report_link(title, body)
+    if len(link) > 7000:   # a very long link may be refused: leave the table out of it (the numbers stay)
+        link = report_link(title, report_post(rep, table=False)[1])
+    lines = [f"model-effort-router {VERSION}: a savings report for this project. Nothing has been sent.",
+             f"It covers {local['from']} to {local['to']}. The post between the lines is all that would be shared: "
+             "totals only, no project name, file name, prompt, date or session id.", "", "-" * 72, title, "", body,
+             "-" * 72, ""]
+    if not local["routed_starts"]:
+        lines.append("The router has not routed a subagent here yet, so these are models picked by hand. "
+                     "`status` says whether the router is on.")
+    if local["no_record"]:
+        lines.append(f"{local['no_record']} routed subagent(s) are not in it: Claude Code no longer has their usage records.")
+    if local["no_parent_price"]:
+        lines.append(f"{local['no_parent_price']} routed subagent(s) are left out of the router's own part: the model "
+                     "that started them is unknown or has no price.")
+    lines += ['To share it: open this link, read the post, and press "Start discussion". If the form opens empty, '
+              "paste the text between the lines (--copy puts it on the clipboard; --open opens the link).", link]
+    return lines, link, body
+
+
 # ---- whose failure was it? (a suggestion from the failure output) ----------------------------------------------
 
 def suggest_cause(log_text: str, cfg: Dict[str, Any]) -> Dict[str, Any]:
@@ -868,12 +1168,7 @@ def audit(path: pathlib.Path) -> List[str]:
     if not path.exists():
         return [f"No hook log at {path}: the plugin's hook has not routed a subagent in this project "
                 "(is the plugin installed and enabled here?)."]
-    rows = []
-    for ln in path.read_text(encoding="utf-8", errors="ignore").splitlines():
-        try:
-            rows.append(json.loads(ln))
-        except ValueError:
-            continue
+    rows = hook_rows(path)
     if not rows:
         return [f"The hook log at {path} is empty."]
     n = len(rows)
@@ -1274,6 +1569,14 @@ def main(argv: List[str]) -> int:
     sv.add_argument("--baseline", help="model to compare with (default: config savings_baseline)")
     sv.add_argument("--exclude", action="append", default=[], help="a session id to leave out (repeatable)")
     sv.add_argument("--json", action="store_true")
+    rp = sub.add_parser("report", help="a short anonymous summary of what was saved here, to share if you choose: "
+                                       "it prints a post and a link, and sends nothing")
+    rp.add_argument("--projects-dir", type=pathlib.Path, action="append", default=[],
+                    help="transcript folder(s); default: this folder's under ~/.claude/projects")
+    rp.add_argument("--open", action="store_true", help="open the ready-filled post in your browser "
+                                                        "(nothing is published until you press the button there)")
+    rp.add_argument("--copy", action="store_true", help="put the post's text on the clipboard")
+    rp.add_argument("--json", action="store_true", help="print only the report's numbers")
     a = ap.parse_args(argv)
     try:
         cfg = load_config(a.config)
@@ -1344,6 +1647,34 @@ def main(argv: List[str]) -> int:
             return 1
         res = savings(read_usage(dirs, a.since, a.until, a.mentions, a.exclude), cfg, a.baseline)
         print(json.dumps(res, indent=1) if a.json else "\n".join(savings_report(res)))
+        return 0
+    if a.cmd == "report":
+        cwd = pathlib.Path.cwd()
+        dirs = a.projects_dir or [projects_dir_for(cwd)]
+        missing = [d for d in dirs if not d.exists()]
+        if missing:
+            print(f"No transcripts at {missing[0]}; pass --projects-dir (a folder under ~/.claude/projects)")
+            return 1
+        try:
+            rep, local = build_report(cwd, dirs, cfg)
+        except ValueError as e:
+            print(f"Cannot make the report: {e}. Give that model a price in `prices`, or set `savings_baseline`.")
+            return 2
+        if not rep["replies"]:
+            print("No usage records for this project yet, so there is nothing to report.")
+            return 1
+        if a.json:
+            print(json.dumps(rep, indent=1))
+            return 0
+        lines, link, body = report_screen(rep, local)
+        print("\n".join(lines))
+        if a.copy:
+            print("The post's text is on the clipboard." if to_clipboard(body)
+                  else "No clipboard tool found: copy the text between the lines by hand.")
+        if a.open:
+            import webbrowser
+            webbrowser.open(link)
+            print("Opened in your browser. Nothing is published until you press the button there.")
         return 0
     if a.cmd == "record":
         row = record(load_task(a.task), cfg, log, a.ran, a.first_try, a.retries, a.other, a.findings, a.rework,
