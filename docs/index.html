@@ -23,7 +23,7 @@
   "programmingLanguage": "Python",
   "runtimePlatform": "Claude Code",
   "license": "https://opensource.org/licenses/MIT",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "author": {"@type": "Person", "name": "Islam Mansoori"},
   "keywords": "Claude Code, plugin, subagents, model selection, reasoning effort, LLM routing, cost, SWE-bench"
 }
@@ -67,9 +67,12 @@ th, td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; whi
 <p>A Claude Code plugin. Before a subagent or worker starts, it reads the task (a story, a GitHub issue or a plain prompt), the labels people put on it and the repository it touches, and chooses <strong>Sonnet or Opus</strong> and an <strong>effort level</strong>. Every choice comes with its reasons. Guessed risk never raises the bill; only explicit lines, labels and configured paths do. A stronger model is tried only when the worker itself failed. Standard-library Python 3.9+, MIT, no dependencies.</p>
 
 <h2>Install</h2>
+<p>One line in a terminal:</p>
+<pre><code>claude plugin install model-effort-router --marketplace islamkmansoori/model-effort-router</code></pre>
+<p>That is the whole setup. Every subagent Claude starts is routed from then on with the built-in rules; there is nothing to configure and nothing to run. To check, ask Claude "is the model router working?". To route a task by hand: <code>/model-effort-router:route-task &lt;file | owner/repo#123 | "prompt"&gt;</code>.</p>
+<p>From inside Claude Code instead:</p>
 <pre><code>/plugin marketplace add islamkmansoori/model-effort-router
 /plugin install model-effort-router@model-effort-router</code></pre>
-<p>Subagents are then routed automatically by a hook. To route a task by hand: <code>/route-task &lt;file | owner/repo#123 | "prompt"&gt;</code>.</p>
 
 <h2>Benchmark results</h2>
 <!-- results:start -->

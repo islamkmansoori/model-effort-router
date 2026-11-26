@@ -7,7 +7,8 @@ or when the call is skipped, it prints nothing and exits 0, and Claude Code goes
 
 Skipped: hook disabled in the config, a subagent type in `hook.skip_agent_types`, or (with `respect_explicit`)
 a call that already names its model or effort. Every decision is appended to `hook.runs_log` (JSON lines), which
-`router.py audit` reads back. With `budget.throttle` on, first attempts of ordinary tasks are capped once today's
+`router.py audit` reads back; when that file is first created inside a git repository, its name is added to
+`.git/info/exclude` so that it is never committed by accident (`keep_run_data_out_of_git`). With `budget.throttle` on, first attempts of ordinary tasks are capped once today's
 spend passes the throttle point; with `mechanical.enabled`, tasks that only run a tool go to the cheapest rung.
 """
 from __future__ import annotations
@@ -70,9 +71,12 @@ def main() -> int:
         if log is not None:
             try:
                 lp = cwd / cfg["hook"]["runs_log"]
+                first = not lp.exists()
                 lp.parent.mkdir(parents=True, exist_ok=True)
                 with lp.open("a", encoding="utf-8") as fh:
                     fh.write(json.dumps(log) + "\n")
+                if first and cfg.get("keep_run_data_out_of_git", True):   # once per project: git leaves the log alone
+                    router.keep_out_of_git(cwd, [lp.name, pathlib.Path(cfg["state"]).name])
             except OSError:
                 pass
         if ans:

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.0
+Plug and play: one line to install, nothing to set up.
+- Install is one terminal line: `claude plugin install model-effort-router --marketplace islamkmansoori/model-effort-router`. Checked from a clean project: the first subagent of the next session was routed with no other step.
+- `status`: one screen that says whether the hook is on, which rules are in use, whether a machine setting overrides the choice, and how many subagents it has routed in this project. Claude runs it when asked "is the router working?".
+- Fixed: a short `.claude/model-router.json` (for example only `{"mechanical": {"enabled": true}}`, or a `critical`, `risk` or `hook` section with one field) silently switched the routing off, because a section replaced the whole default section. Now only the fields a project names change, so a short file is enough. A full copy written by `init` behaves as before.
+- The hook's log and the failure state are kept out of git on the machine (`.git/info/exclude`) when they are first created, so an `add -A` cannot commit the first words of your tasks. Switch off with `"keep_run_data_out_of_git": false`.
+- A rules file that is not valid JSON is reported in plain words by every command (exit 2) instead of a traceback.
+- README: the skill is invoked as `/model-effort-router:route-task` (the old text said `/route-task`); team install, updating and switching off are described with Claude Code's own `claude plugin` commands.
+
 ## 0.6.0
 - `routing_tools/`: the routing and token-optimisation modules of an earlier project by the same author (complexity scorer, request classifier, model router, routing authority, classifier feedback, loop guard, token logger, retry analytics, prompt cache), published as a standalone tool with a command line. Apache-2.0; the rest of the repository stays MIT. One behaviour change: the scorer's optional model call takes its endpoint and key from the environment only, and no default key is shipped.
 - A test keeps `bench/keyword_tiers.py` identical to the scorer of that earlier project.

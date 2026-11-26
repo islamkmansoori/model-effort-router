@@ -1,5 +1,5 @@
 {
-  "_about": "Rules for model-effort-router. Copy with `router.py init` to .claude/model-router.json and edit; a top-level key you set replaces the default one. Patterns are Python regular expressions, matched case-insensitively; a sentence that denies a pattern (see negation) does not count. paths are glob patterns over repository paths (src/billing/*). The hook section controls automatic routing of subagents.",
+  "_about": "Rules for model-effort-router. Nothing has to be copied: write only what you change into .claude/model-router.json (`router.py init` writes a full copy if you prefer to edit one). A key you set replaces the default one; inside a section (hook, budget, risk, critical, ...) only the fields you name change. Patterns are Python regular expressions, matched case-insensitively; a sentence that denies a pattern (see negation) does not count. paths are glob patterns over repository paths (src/billing/*). The hook section controls automatic routing of subagents.",
   "ladder": [
     [
       "sonnet",
@@ -316,5 +316,6 @@
     "throttle_rung": 0,
     "cache_minutes": 10
   },
-  "state": ".claude/model-router-state.json"
+  "state": ".claude/model-router-state.json",
+  "keep_run_data_out_of_git": true
 }

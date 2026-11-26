@@ -22,16 +22,63 @@ In other words: an explainable **LLM router** (model routing) for Claude Code su
 
 ## Install
 
-In Claude Code:
+One line in a terminal:
+
+```
+claude plugin install model-effort-router --marketplace islamkmansoori/model-effort-router
+```
+
+That is the whole setup. There is nothing to configure and nothing to run:
+
+- **Every subagent Claude starts is routed from then on**, in every project on that machine. New sessions pick the plugin up by themselves; in a session that is already open, type `/reload-plugins`.
+- **The built-in rules apply** until you write your own. No config file is needed.
+- **Nothing lands in your commits.** The hook keeps a small log in the project (`.claude/model-router-runs.jsonl`) and tells git on your machine to ignore it.
+
+Needs Claude Code and Python 3.9 or later (`python3`, or `python` on Windows). No packages are installed.
+
+**Check that it works.** Ask Claude "is the model router working?", or type `/model-effort-router:route-task is the router working?`. The answer is one screen:
+
+```
+model-effort-router 0.7.0
+- Rules: built in. Nothing to set up; `init` writes a copy to edit if you want other rules.
+- Hook: on. Subagents get one of: sonnet/medium, sonnet/high, opus/high, opus/xhigh.
+- Left alone: Explore, claude-code-guide, statusline-setup, calls that name their own model or effort.
+- This machine: no setting overrides the choice.
+- Working: yes. The hook has seen 1 subagent start(s) here and chose the model for 1 (sonnet/medium 1); last on 2026-11-26. Details: `audit`.
+```
+
+<details>
+<summary><b>Other ways to install, a whole team, updating, switching off</b></summary>
+
+**From inside Claude Code** (two steps; the second opens a panel where you confirm):
 
 ```
 /plugin marketplace add islamkmansoori/model-effort-router
 /plugin install model-effort-router@model-effort-router
 ```
 
-That's it: subagents are now routed. To route a task by hand, ask Claude to "route this task" or type `/route-task <file | owner/repo#123 | "prompt">`.
+**For one project and everyone who works on it.** Run these in the project folder and commit `.claude/settings.json`:
 
-Without the plugin, copy `scripts/router.py` and `config/default.json` (as `scripts/` and `config/`) into a project and run `python3 scripts/router.py --help`.
+```
+claude plugin marketplace add islamkmansoori/model-effort-router --scope project
+claude plugin install model-effort-router@model-effort-router --scope project
+```
+
+The file then names the plugin for the project. Each teammate runs the second command once in their copy.
+
+**Update.** Claude Code does not update plugins from other people's marketplaces by itself unless you switch that on (`/plugin`, Marketplaces). By hand:
+
+```
+claude plugin update model-effort-router@model-effort-router
+```
+
+**Switch off.** `claude plugin disable model-effort-router@model-effort-router` (or `uninstall`). For one project only, put `{"hook": {"enabled": false}}` in `.claude/model-router.json`. For one subagent, name its model or effort yourself: the hook leaves explicit choices alone.
+
+**Without the plugin** (any other tool, a script, CI): copy `scripts/router.py` and `config/default.json` (as `scripts/` and `config/`) into a project and run `python3 scripts/router.py --help`. The scoring, the failure causes and the reports work on their own; only the automatic routing of subagents needs Claude Code.
+
+</details>
+
+To route a task by hand, ask Claude to "route this task" or type `/model-effort-router:route-task <file | owner/repo#123 | "prompt">`.
 
 ## What the benchmark found
 
@@ -132,6 +179,7 @@ python3 scripts/router.py score --text "Fix the login timeout" --repo . --assess
 python3 scripts/router.py score TASK.md --write --retry 1 --cause worker
 python3 scripts/router.py score TASK.md --write --retry 1 --failure-log out.txt   # the cause is suggested from the output
 python3 scripts/router.py cause out.txt                        # whose failure: worker, environment or task?
+python3 scripts/router.py status                               # one screen: is it on, has it routed anything, does anything override it
 python3 scripts/router.py check-env                            # anything that would override the choice?
 python3 scripts/router.py audit                                # what the hook did: routed, kept, skipped, capped
 python3 scripts/router.py budget                               # spend against your daily, weekly, monthly limits
@@ -145,7 +193,17 @@ On Windows use `python` instead of `python3`.
 
 ## Configure
 
-`init` writes `.claude/model-router.json`; a key you set replaces the default. Everything is there: the ladder (add `["haiku", "low"]` at the bottom or end with `["opus", "max"]`), the thresholds, size and criteria patterns, signals, labels, critical and risk **paths** (globs such as `src/billing/*`), denial words, the assessor, the hook (`enabled`, `skip_agent_types`, `respect_explicit`, `assess`, `runs_log`), the retry limit, the readiness words, the failure-cause patterns, the budget, the mechanical rung and the model prices.
+You do not have to. To change a rule, write only that rule into `.claude/model-router.json`:
+
+```json
+{
+  "critical": {"paths": ["src/ledger/*"]},
+  "risk": {"paths": {"money": ["src/billing/*"]}},
+  "budget": {"daily": 20, "throttle": true}
+}
+```
+
+A key you set replaces the default; inside a section only the fields you name change. `init` writes a full copy if you would rather edit one. Everything is there: the ladder (add `["haiku", "low"]` at the bottom or end with `["opus", "max"]`), the thresholds, size and criteria patterns, signals, labels, critical and risk **paths** (globs such as `src/billing/*`), denial words, the assessor, the hook (`enabled`, `skip_agent_types`, `respect_explicit`, `assess`, `runs_log`), the retry limit, the readiness words, the failure-cause patterns, the budget, the mechanical rung and the model prices.
 
 ## Learn from your own outcomes
 
@@ -169,7 +227,10 @@ Per call, with the Agent tool's `model` and `effort` parameters; per subagent, w
 Set `"budget": {"daily": 20, "throttle": true}` in `.claude/model-router.json`. `router.py budget` reports spend against the limit, and past 80% of it the hook starts ordinary subagents on the cheap rung. Critical and risky tasks are never capped.
 
 **How do I know the router is really choosing my subagents' models?**
-`python3 scripts/router.py audit` reads the hook's log: how many subagent starts it routed, how many kept a model the caller set, how many were skipped, and whether a machine setting overrode the choice.
+Ask Claude "is the model router working?" (it runs `router.py status`). `router.py audit` gives the detail from the hook's log: how many subagent starts it routed, how many kept a model the caller set, how many were skipped, and whether a machine setting overrode the choice.
+
+**Do I have to configure anything, or run something for each task?**
+No. After the one-line install every subagent is routed with the built-in rules. A config file, the `**Critical:**` and `**Risk:**` lines, the budget and the outcome log are all optional; each one makes the choice better informed.
 
 **Is `xhigh` available on every model?**
 No. On a model without it, Claude Code quietly runs the highest level it supports (for example `high`).

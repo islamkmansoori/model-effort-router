@@ -466,6 +466,130 @@ def main() -> int:
     check(len(router.read_usage([old_dir], since="2026-11-01")) == 0 and len(router.read_usage([old_dir])) == 1,
           "a file not touched since before the first day asked for is not read")
 
+    print("== plug and play: status, run data kept out of git")
+    import subprocess
+    sp = pathlib.Path(tempfile.mkdtemp(prefix="status-"))
+    lines, fine = router.status(sp, CFG, env={})
+    st = "\n".join(lines)
+    check(fine and router.VERSION in lines[0] and "Rules: built in" in st and "Hook: on" in st
+          and "sonnet/medium" in st and "no subagent seen here yet" in st and "/reload-plugins" in st
+          and "Team:" not in st, "status on a fresh project: built-in rules, hook on, nothing routed yet", st)
+    (sp / ".claude").mkdir()
+    (sp / ".claude" / "model-router-runs.jsonl").write_text("\n".join(json.dumps(x) for x in [
+        {"time": "2026-11-26T10:00:00", "action": "routed", "model": "sonnet", "effort": "medium"},
+        {"time": "2026-11-26T10:05:00", "action": "routed", "model": "opus", "effort": "high"},
+        {"time": "2026-11-27T09:00:00", "action": "kept (explicit)", "model": "haiku"}]) + "\nnot json\n", encoding="utf-8")
+    (sp / ".claude" / "settings.json").write_text(json.dumps({"enabledPlugins": {router.PLUGIN_ID: True}}), encoding="utf-8")
+    (sp / ".claude" / "model-router.json").write_text("{}", encoding="utf-8")
+    lines, fine = router.status(sp, CFG, env={})
+    st = "\n".join(lines)
+    check(fine and "Working: yes" in st and "seen 3 subagent start(s)" in st and "chose the model for 2" in st
+          and "last on 2026-11-27" in st and "this project's own" in st and "Team:" in st,
+          "status with a hook log: counts what was seen and routed, names the project's rules and settings", st)
+    lines, fine = router.status(sp, CFG, env={"CLAUDE_CODE_EFFORT_LEVEL": "low"})
+    check(not fine and "WARNING" in "\n".join(lines) and "CLAUDE_CODE_EFFORT_LEVEL" in "\n".join(lines),
+          "status fails when a machine setting overrides the choice", lines)
+    off = {**CFG, "hook": {**CFG["hook"], "enabled": False}, "budget": {**CFG["budget"], "daily": 20}}
+    lines, fine = router.status(sp, off, env={})
+    check(not fine and "Hook: OFF" in "\n".join(lines) and "Budget: daily $20" in "\n".join(lines),
+          "status fails when the hook is switched off, and names a budget that is set", lines)
+    (sp / ".claude" / "settings.json").write_text("{broken", encoding="utf-8")
+    check("Team:" not in "\n".join(router.status(sp, CFG, env={})[0]), "a broken settings file does not break status")
+
+    nogit = pathlib.Path(tempfile.mkdtemp(prefix="nogit-"))
+    check(router.keep_out_of_git(nogit, ["model-router-runs.jsonl"]) is False and not list(nogit.iterdir()),
+          "outside a git repository nothing is written")
+    have_git = subprocess.run(["git", "--version"], capture_output=True).returncode == 0
+    if have_git:
+        gr = pathlib.Path(tempfile.mkdtemp(prefix="git-"))
+        subprocess.run(["git", "init", "-q", str(gr)], check=True, capture_output=True)
+        ex = gr / ".git" / "info" / "exclude"
+        before = ex.read_text(encoding="utf-8") if ex.exists() else ""
+        ok1 = router.keep_out_of_git(gr, ["model-router-runs.jsonl", "model-router-state.json"])
+        once = ex.read_text(encoding="utf-8")
+        ok2 = router.keep_out_of_git(gr, ["model-router-runs.jsonl", "model-router-state.json"])
+        check(ok1 and ok2 and once.startswith(before) and once.count("model-router-runs.jsonl") == 1
+              and ex.read_text(encoding="utf-8") == once,
+              "the run data is added to .git/info/exclude once, and what was there is kept", once)
+        gr = pathlib.Path(tempfile.mkdtemp(prefix="git-hook-"))   # a fresh repository: the hook has to do it itself
+        subprocess.run(["git", "init", "-q", str(gr)], check=True, capture_output=True)
+        ev2 = {"tool_name": "Agent", "cwd": str(gr), "session_id": "s",
+               "tool_input": {"description": "Fix a typo", "prompt": "Fix the typo in the README.", "subagent_type": "general-purpose"}}
+        old_in, old_out = sys.stdin, sys.stdout
+        sys.stdin, sys.stdout = io.StringIO(json.dumps(ev2)), io.StringIO()
+        try:
+            rc = route_agent.main()
+            answered = sys.stdout.getvalue()
+        finally:
+            sys.stdin, sys.stdout = old_in, old_out
+        shown = subprocess.run(["git", "-C", str(gr), "status", "--porcelain", "--untracked-files=all"],
+                               capture_output=True, text=True).stdout
+        check(rc == 0 and '"model": "sonnet"' in answered and (gr / ".claude" / "model-router-runs.jsonl").exists()
+              and shown.strip() == "", "the hook routes, writes its log, and git does not show the log as untracked", shown)
+        g2 = pathlib.Path(tempfile.mkdtemp(prefix="git-off-"))
+        subprocess.run(["git", "init", "-q", str(g2)], check=True, capture_output=True)
+        (g2 / ".claude").mkdir()
+        (g2 / ".claude" / "model-router.json").write_text('{"keep_run_data_out_of_git": false}', encoding="utf-8")
+        old_in, old_out = sys.stdin, sys.stdout
+        sys.stdin, sys.stdout = io.StringIO(json.dumps({**ev2, "cwd": str(g2)})), io.StringIO()
+        try:
+            route_agent.main()
+        finally:
+            sys.stdin, sys.stdout = old_in, old_out
+        shown = subprocess.run(["git", "-C", str(g2), "status", "--porcelain", "--untracked-files=all"],
+                               capture_output=True, text=True).stdout
+        check(CFG["keep_run_data_out_of_git"] is True and "model-router-runs.jsonl" in shown,
+              "keeping run data out of git is on by default and can be switched off in the project's rules", shown)
+        sub_dir = gr / "pkg" / "inner"
+        sub_dir.mkdir(parents=True)
+        (sub_dir / ".claude").mkdir()
+        (sub_dir / ".claude" / "model-router-runs.jsonl").write_text("{}\n", encoding="utf-8")
+        shown = subprocess.run(["git", "-C", str(gr), "status", "--porcelain", "--untracked-files=all"],
+                               capture_output=True, text=True).stdout
+        check(shown.strip() == "", "a log written from a subfolder of the repository is ignored too", shown)
+    print("== a short rules file is enough")
+    pc = pathlib.Path(tempfile.mkdtemp(prefix="partial-"))
+    (pc / ".claude").mkdir()
+    pf = pc / ".claude" / "model-router.json"
+    ev3 = {"tool_name": "Agent", "cwd": str(pc), "session_id": "s",
+           "tool_input": {"description": "Fix a typo", "prompt": "Fix the typo in the README.", "subagent_type": "general-purpose"}}
+
+    def run_hook(event: Dict[str, Any]) -> str:
+        old_in, old_out = sys.stdin, sys.stdout
+        sys.stdin, sys.stdout = io.StringIO(json.dumps(event)), io.StringIO()
+        try:
+            route_agent.main()
+            return sys.stdout.getvalue()
+        finally:
+            sys.stdin, sys.stdout = old_in, old_out
+
+    for short in ({"hook": {"assess": False}}, {"mechanical": {"enabled": True}}, {"critical": {"paths": ["src/ledger/*"]}},
+                  {"risk": {"paths": {"money": ["src/billing/*"]}}}, {"budget": {"daily": 20, "throttle": True}},
+                  {"labels": {"critical": ["p0"]}}, {"prices": {"my-model": [1, 2, 0.1]}}):
+        pf.write_text(json.dumps(short), encoding="utf-8")
+        check('"model"' in run_hook(ev3), f"the hook still routes with only {json.dumps(short)[:60]} in the project's rules")
+    pf.write_text(json.dumps({"hook": {"skip_agent_types": ["general-purpose"]}, "risk": {"floor": 3}, "ladder": [["haiku", "low"]]}), encoding="utf-8")
+    merged = router.load_config(pf)
+    check(merged["hook"]["skip_agent_types"] == ["general-purpose"] and merged["hook"]["runs_log"] == CFG["hook"]["runs_log"]
+          and merged["risk"]["floor"] == 3 and merged["risk"]["kinds"] == CFG["risk"]["kinds"]
+          and merged["ladder"] == [["haiku", "low"]] and merged["signals"] == CFG["signals"],
+          "inside a section only the named fields change; a list or a plain value is replaced whole", merged["hook"])
+    full = pathlib.Path(tempfile.mkdtemp(prefix="full-")) / "model-router.json"
+    full.write_text(router.DEFAULT_CONFIG.read_text(encoding="utf-8"), encoding="utf-8")
+    check(router.load_config(full) == CFG, "a full copy (as `init` writes it) gives exactly the built-in rules")
+    pf.write_text('{"hook": {"enabled": false}}', encoding="utf-8")
+    check(run_hook(ev3) == "", "hook.enabled false in a short file switches the routing off")
+    pf.write_text("{broken", encoding="utf-8")
+    check(run_hook(ev3) == "", "a rules file that is not valid JSON never breaks the session: the hook stays silent")
+    with contextlib.redirect_stdout(io.StringIO()) as buf:
+        code = router.main(["--config", str(pf), "status"])
+    check(code == 2 and "not valid JSON" in buf.getvalue() and "not routed" in buf.getvalue(),
+          "and status says so plainly instead of a traceback", buf.getvalue())
+
+    with contextlib.redirect_stdout(io.StringIO()) as buf:
+        code = router.main(["status"])
+    check(code in (0, 1) and buf.getvalue().startswith("model-effort-router " + router.VERSION), "the status command prints the screen")
+
     print(f"\n{failures} failed")
     return 1 if failures else 0
 

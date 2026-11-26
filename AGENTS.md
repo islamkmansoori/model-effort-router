@@ -10,6 +10,7 @@ For AI coding agents and people changing this repository.
 - **Advice does not route.** The readiness check reports; it never changes the model or effort.
 - **New rules need evidence.** `bench/keyword_tiers.py` is a baseline that lost to "start cheap, jump on failure". Before adding a signal that raises the first choice, score it against `bench/results/runs.jsonl`.
 - **The hook must never break a session.** Any error in `route_agent.py` means: print nothing, exit 0.
+- **Plug and play is a promise.** After the one-line install nothing else may be required: no config file, no command to run, no file to add to `.gitignore`. A short project config (one section, one field) has to keep working; `load_config` lays it over the defaults, and a test runs the hook with each short file the README suggests.
 - **Test before you finish.** `python3 -I tests/test_router.py` must print `0 failed`. CI runs it on Linux, macOS and Windows with Python 3.9, 3.12 and 3.13.
 - **Validate the plugin.** `claude plugin validate . --strict` must pass.
 - **The benchmark costs money or plan usage.** `bench/run.py validate` and `route` (without `--assess`) are free; `run` and `route --assess` call Claude. Never start a paid run without a `--total-budget`.

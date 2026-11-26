@@ -46,9 +46,11 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 HERE = pathlib.Path(__file__).resolve().parent
 DEFAULT_CONFIG = HERE.parent / "config" / "default.json"
 PROJECT_CONFIG = pathlib.Path(".claude") / "model-router.json"
+PROJECT_SETTINGS = pathlib.Path(".claude") / "settings.json"   # Claude Code's own project settings
+PLUGIN_ID = "model-effort-router@model-effort-router"
 MARK = "**Model and effort (model-effort-router):**"
 CAUSES = ("worker", "environment", "task")   # --cause; "unknown" and "repeat" are set by --failure-log
-VERSION = "0.6.0"
+VERSION = "0.7.0"
 
 # Settings that make Claude Code run on something other than what the router chose (Claude Code docs, Nov 2026).
 OVERRIDES = {
@@ -65,11 +67,18 @@ ISSUE_REF = re.compile(r"^(?:https?://github\.com/)?([\w.-]+)/([\w.-]+)(?:#|/iss
 # ---- config --------------------------------------------------------------------------------------------------
 
 def load_config(path: Optional[pathlib.Path] = None) -> Dict[str, Any]:
-    """The project's .claude/model-router.json if there is one, else the bundled default. Top-level keys replace."""
+    """The bundled default rules, with the project's .claude/model-router.json laid over them if there is one.
+
+    A key the project sets replaces the default. Inside a section (hook, budget, risk, critical, ...) only the
+    fields the project names change, so a short file such as {"mechanical": {"enabled": true}} is enough."""
     cfg: Dict[str, Any] = json.loads(DEFAULT_CONFIG.read_text(encoding="utf-8"))
     p = path or PROJECT_CONFIG
     if p.exists():
-        cfg.update(json.loads(p.read_text(encoding="utf-8")))
+        own = json.loads(p.read_text(encoding="utf-8"))
+        if not isinstance(own, dict):
+            raise ValueError("it has to be a JSON object: { ... }")
+        for k, v in own.items():
+            cfg[k] = {**cfg[k], **v} if isinstance(v, dict) and isinstance(cfg.get(k), dict) else v
     return cfg
 
 
@@ -871,6 +880,84 @@ def audit(path: pathlib.Path) -> List[str]:
     return out
 
 
+# ---- plug and play: one status screen, run data kept out of git --------------------------------------------------
+
+def keep_out_of_git(cwd: pathlib.Path, names: List[str]) -> bool:
+    """Tell git, on this machine only, to ignore the router's run data: lines in .git/info/exclude.
+
+    The hook's log holds the first words of each subagent's task, so an `add -A` should not pick it up. Nothing
+    tracked changes, a file that is already committed stays committed, and outside a git repository nothing happens."""
+    found = _git(cwd, "rev-parse", "--git-path", "info/exclude")
+    if not found:
+        return False
+    ex = pathlib.Path(found[0].strip())
+    ex = ex if ex.is_absolute() else cwd / ex
+    try:
+        have = ex.read_text(encoding="utf-8", errors="ignore") if ex.exists() else ""
+        missing = [n for n in names if n and n not in have.splitlines()]
+        if missing:
+            ex.parent.mkdir(parents=True, exist_ok=True)
+            with ex.open("a", encoding="utf-8") as fh:
+                fh.write(("" if not have or have.endswith("\n") else "\n")
+                         + "# model-effort-router: run data of this machine\n" + "\n".join(missing) + "\n")
+    except OSError:
+        return False
+    return True
+
+
+def status(cwd: pathlib.Path, cfg: Dict[str, Any], env: Optional[Dict[str, str]] = None) -> Tuple[List[str], bool]:
+    """One screen: are the rules loaded, is the hook on, has it routed anything here, does anything override it."""
+    hk = cfg["hook"]
+    own_rules = (cwd / PROJECT_CONFIG).exists()
+    out = [f"model-effort-router {VERSION}",
+           f"- Rules: {PROJECT_CONFIG} (this project's own)" if own_rules
+           else "- Rules: built in. Nothing to set up; `init` writes a copy to edit if you want other rules."]
+    ladder = ", ".join("/".join(r) for r in cfg["ladder"])
+    on = bool(hk.get("enabled", True))
+    out.append(f"- Hook: on. Subagents get one of: {ladder}." if on
+               else f"- Hook: OFF in {PROJECT_CONFIG} (`hook.enabled`). Subagents are not routed.")
+    left = list(hk.get("skip_agent_types", [])) + (["calls that name their own model or effort"]
+                                                   if hk.get("respect_explicit", True) else [])
+    if on and left:
+        out.append("- Left alone: " + ", ".join(left) + ".")
+    found = check_env(env)
+    out.append("- This machine: WARNING, a setting overrides the choice:" if found
+               else "- This machine: no setting overrides the choice.")
+    out += [f"    {f}" for f in found]
+    rows: List[Dict[str, Any]] = []
+    lp = cwd / hk["runs_log"]
+    if lp.exists():
+        for ln in lp.read_text(encoding="utf-8", errors="ignore").splitlines():
+            try:
+                rows.append(json.loads(ln))
+            except ValueError:
+                continue
+    routed = [r for r in rows if r.get("action") == "routed"]
+    if rows:
+        counts: Dict[str, int] = {}
+        for r in routed:
+            k = f"{r.get('model')}/{r.get('effort')}"
+            counts[k] = counts.get(k, 0) + 1
+        mix = ", ".join(f"{k} {v}" for k, v in sorted(counts.items(), key=lambda kv: -kv[1])) or "none"
+        out.append(f"- Working: yes. The hook has seen {len(rows)} subagent start(s) here and chose the model for "
+                   f"{len(routed)} ({mix}); last on {str(rows[-1].get('time', '?'))[:10]}. Details: `audit`.")
+    else:
+        out.append("- Working: no subagent seen here yet. The first one writes the log. If subagents have already "
+                   "run since the install, the plugin is not loaded: run `/reload-plugins` (or restart Claude Code) "
+                   "and check that `/plugin` shows it as enabled.")
+    try:
+        st = json.loads((cwd / PROJECT_SETTINGS).read_text(encoding="utf-8"))
+        shared = isinstance(st, dict) and (st.get("enabledPlugins") or {}).get(PLUGIN_ID) is True
+    except (OSError, ValueError, AttributeError):
+        shared = False
+    if shared:
+        out.append(f"- Team: {PROJECT_SETTINGS} enables the plugin for this project (commit it to share the setting).")
+    limits = {k: v for k, v in (cfg.get("budget") or {}).items() if k in ("daily", "weekly", "monthly") and v}
+    if limits:
+        out.append("- Budget: " + ", ".join(f"{k} ${v}" for k, v in limits.items()) + ". Spend so far: `budget`.")
+    return out, on and not found
+
+
 # ---- budget: spend against limits, from Claude Code's usage records -----------------------------------------------
 
 def projects_dir_for(cwd: pathlib.Path) -> pathlib.Path:
@@ -964,6 +1051,7 @@ def main(argv: List[str]) -> int:
     ap.add_argument("--version", action="version", version=VERSION)
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("init", help="write .claude/model-router.json with the default rules, to edit")
+    sub.add_parser("status", help="one screen: is the router on, has it routed anything here, does anything override it")
     s = sub.add_parser("score", help="score tasks")
     s.add_argument("tasks", nargs="*", help="task files, owner/repo#N issue references, or - for standard input")
     s.add_argument("--issue", action="append", default=[], help="a GitHub issue: owner/repo#123 or its URL")
@@ -1008,7 +1096,12 @@ def main(argv: List[str]) -> int:
     sv.add_argument("--exclude", action="append", default=[], help="a session id to leave out (repeatable)")
     sv.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
-    cfg = load_config(a.config)
+    try:
+        cfg = load_config(a.config)
+    except ValueError as e:
+        print(f"{a.config or PROJECT_CONFIG} is not valid JSON ({e}). Subagents are not routed until it is fixed; "
+              "delete the file to go back to the built-in rules.")
+        return 2
     log = pathlib.Path(cfg["log"])
 
     if a.cmd == "init":
@@ -1019,6 +1112,10 @@ def main(argv: List[str]) -> int:
         PROJECT_CONFIG.write_text(DEFAULT_CONFIG.read_text(encoding="utf-8"), encoding="utf-8")
         print(f"Wrote {PROJECT_CONFIG}. Edit the patterns, points, paths and ladder to fit this project.")
         return 0
+    if a.cmd == "status":
+        lines, fine = status(pathlib.Path.cwd(), cfg)
+        print("\n".join(lines))
+        return 0 if fine else 1
     if a.cmd == "check-env":
         found = check_env()
         print("\n".join(["Would override the chosen model or effort:", *found]) if found
@@ -1092,7 +1189,10 @@ def main(argv: List[str]) -> int:
         if a.retry and a.failure_log:
             failing = a.failure_log.read_text(encoding="utf-8", errors="ignore")
             failed_on = score_task(t, cfg, max(a.retry - 1, 0), "worker", a.repo, assessed=est)["model"]
+            first_state = not pathlib.Path(cfg["state"]).exists()
             seen = note_failure(pathlib.Path(cfg["state"]), t.name, failure_fingerprint(failing), failed_on)
+            if first_state and cfg.get("keep_run_data_out_of_git", True):
+                keep_out_of_git(pathlib.Path.cwd(), [pathlib.Path(cfg["state"]).name])
             sug = suggest_cause(failing, cfg)
             if not a.cause:
                 cause = sug["cause"]
