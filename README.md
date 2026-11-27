@@ -284,6 +284,8 @@ Climbing one rung at a time was not: the failed attempts on Sonnet high cost mor
 **How is this different from other routers?**
 Most routers (for example claude-model-router, Jev-Router, RouteLLM) judge difficulty from the wording of a prompt, or learn it from preference data. This one reads the task's own facts and the repository, keeps risk separate from size, explains every choice, and publishes a benchmark you can rerun. Those tools route in ways this one does not (per turn, learned routers); pick what fits.
 
+A wider comparison with related projects is in [docs/research/related-repositories.md](docs/research/related-repositories.md). Claude Fable 5.2 did it on 26 November 2026 at the author's request. It lists what was not found in other projects, what is common, and where this project's own claims are weak. No person has checked it yet.
+
 **Does it send my code anywhere?**
 No. The router and the hook run locally. The only network calls are `--issue` (GitHub's API) and `--assess` (one Claude call, through your own Claude Code), and both happen only when you ask for them.
 

@@ -33,5 +33,6 @@ The repository also publishes `routing_tools/`: the routing and token-optimisati
 
 ## Optional
 - [Real-project case study](https://github.com/islamkmansoori/model-effort-router/blob/main/docs/case-study.md)
+- [Related-projects research](https://github.com/islamkmansoori/model-effort-router/blob/main/docs/research/related-repositories.md): what other model pickers do and do not do, and what weighs against this project's own claims. Done by Claude Fable 5.2 on 26 November 2026 at the author's request; not checked by a person.
 - [Changelog](https://github.com/islamkmansoori/model-effort-router/blob/main/CHANGELOG.md)
 - [Raw runs](https://github.com/islamkmansoori/model-effort-router/blob/main/bench/results/runs.jsonl)
